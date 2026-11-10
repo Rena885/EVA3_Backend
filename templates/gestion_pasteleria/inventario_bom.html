@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Bodega de Insumos y Lista de Materiales (BOM) · Dulce Arte{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+        <h4 class="fw-bold mb-0">
+            <i class="bi bi-boxes text-danger me-1"></i> 3. Inventario de Bodega y Lista de Materiales (BOM)
+        </h4>
+        <p class="text-muted small mb-0">
+            Control de insumos perecibles, recetas estándar (Bill of Materials) y Kardex auditable de descuentos automáticos por pedido.
+        </p>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+        <span class="badge bg-dark fs-6 px-3 py-2">
+            Valorización Bodega: ${{ valor_total_bodega|floatformat:0|intcomma }} CLP
+        </span>
+    </div>
+</div>
+
+<!-- Pestañas de Navegación Bodega / Recetas BOM / Kardex -->
+<ul class="nav nav-tabs mb-3 fw-semibold" id="bomTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="tab-insumos" data-bs-toggle="tab" data-bs-target="#pane-insumos" type="button">
+            <i class="bi bi-box-seam me-1"></i> 1. Stock de Insumos y Perecibles ({{ insumos|length }})
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-recetas" data-bs-toggle="tab" data-bs-target="#pane-recetas" type="button">
+            <i class="bi bi-journal-richtext me-1"></i> 2. Recetas Base y Lista de Materiales (BOM) ({{ productos|length }})
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="tab-kardex" data-bs-toggle="tab" data-bs-target="#pane-kardex" type="button">
+            <i class="bi bi-clock-history me-1"></i> 3. Kardex de Movimientos y Trazabilidad BOM
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- PESTAÑA 1: STOCK DE INSUMOS Y CRUD -->
+    <div class="tab-pane fade show active" id="pane-insumos" role="tabpanel">
+        <div class="row g-4">
+            <!-- Tabla de Insumos con Reposición Rápida -->
+            <div class="col-lg-8">
+                <div class="da-card p-3">
+                    <h6 class="fw-bold mb-3">Catálogo de Materias Primas e Insumos en Bodega</h6>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>SKU / Insumo</th>
+                                    <th>Categoría</th>
+                                    <th>Stock Actual / Mínimo</th>
+                                    <th>Costo Unit.</th>
+                                    <th>Vencimiento / Lote</th>
+                                    <th>Ajuste Rápido Kardex</th>
+                                    <th class="text-end">CRUD</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ins in insumos %}
+                                <tr>
+                                    <td>
+                                        <div class="fw-bold">{{ ins.nombre }}</div>
+                                        <small class="text-muted">{{ ins.codigo_sku }} · {{ ins.ubicacion_bodega }}</small>
+                                    </td>
+                                    <td>{{ ins.categoria.nombre }}</td>
+                                    <td>
+                                        {% if ins.en_alerta_stock %}
+                                        <span class="badge bg-danger">⚠️ {{ ins.stock_actual }} {{ ins.unidad_medida }}</span>
+                                        {% else %}
+                                        <span class="badge bg-success-subtle text-success border border-success-subtle">✔ {{ ins.stock_actual }} {{ ins.unidad_medida }}</span>
+                                        {% endif %}
+                                        <small class="d-block text-muted">Mín: {{ ins.stock_minimo }} {{ ins.unidad_medida }}</small>
+                                    </td>
+                                    <td>${{ ins.costo_unitario|floatformat:0|intcomma }}</td>
+                                    <td>
+                                        {% if ins.alerta_vencimiento == 'VENCIDO' %}
+                                        <span class="badge bg-danger">Vencido ({{ ins.fecha_vencimiento|date:"d/m/Y" }})</span>
+                                        {% elif ins.alerta_vencimiento == 'POR_VENCER' %}
+                                        <span class="badge bg-warning text-dark">⏳ {{ ins.dias_para_vencer }} días ({{ ins.fecha_vencimiento|date:"d/m" }})</span>
+                                        {% elif ins.fecha_vencimiento %}
+                                        <span class="text-success">{{ ins.fecha_vencimiento|date:"d/m/Y" }}</span>
+                                        {% else %}
+                                        <span class="text-muted">No perecible</span>
+                                        {% endif %}
+                                        <small class="d-block text-muted">{{ ins.lote_actual }}</small>
+                                    </td>
+                                    <td>
+                                        <form method="post" class="d-flex gap-1">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="accion" value="movimiento_stock">
+                                            <input type="hidden" name="insumo_id" value="{{ ins.pk }}">
+                                            <select name="tipo_movimiento" class="form-select form-select-sm py-0" style="width: 90px; font-size: 0.72rem;">
+                                                <option value="ENTRADA_COMPRA">+ Compra</option>
+                                                <option value="AJUSTE_MERMA">- Merma</option>
+                                            </select>
+                                            <input type="number" step="0.1" name="cantidad" value="10" class="form-control form-control-sm py-0" style="width: 65px; font-size: 0.72rem;" required>
+                                            <input type="hidden" name="motivo" value="Ajuste operativo desde panel de Bodega">
+                                            <button type="submit" class="btn btn-sm btn-outline-dark py-0 px-2">OK</button>
+                                        </form>
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="?editar_insumo={{ ins.pk }}" class="btn btn-outline-secondary" title="Editar Insumo">
+                                                <i class="bi bi-pencil"></i>
+                                            </a>
+                                            <form method="post" class="d-inline" onsubmit="return confirm('¿Dar de baja o eliminar {{ ins.nombre }}?');">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="accion" value="eliminar_insumo">
+                                                <input type="hidden" name="insumo_id" value="{{ ins.pk }}">
+                                                <button type="submit" class="btn btn-outline-danger">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Formulario Crear / Editar Insumo -->
+            <div class="col-lg-4">
+                <div class="da-card p-4">
+                    <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
+                        {% if insumo_instancia %}
+                        Editar Insumo: {{ insumo_instancia.nombre }}
+                        {% else %}
+                        Registrar Nuevo Insumo en Bodega
+                        {% endif %}
+                    </h6>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="guardar_insumo">
+                        {% if insumo_instancia %}
+                        <input type="hidden" name="insumo_pk" value="{{ insumo_instancia.pk }}">
+                        {% endif %}
+                        <div class="row g-2">
+                            {% for field in insumo_form %}
+                            <div class="{% if field.name in 'codigo_sku,unidad_medida,stock_actual,stock_minimo,costo_unitario,lote_actual' %}col-6{% else %}col-12{% endif %}">
+                                <label class="form-label small fw-bold mb-1">{{ field.label }}</label>
+                                {{ field }}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="d-flex gap-2 mt-3">
+                            <button type="submit" class="btn btn-dulce btn-sm w-100">
+                                <i class="bi bi-save me-1"></i> Guardar Insumo
+                            </button>
+                            {% if insumo_instancia %}
+                            <a href="{% url 'inventario_bom' %}" class="btn btn-outline-secondary btn-sm">Cancelar</a>
+                            {% endif %}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PESTAÑA 2: RECETAS BASE Y LISTA DE MATERIALES (BOM) -->
+    <div class="tab-pane fade" id="pane-recetas" role="tabpanel">
+        <div class="row g-4">
+            <div class="col-lg-8">
+                {% for prod in productos %}
+                <div class="da-card p-3 mb-3">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center border-bottom pb-2 mb-2">
+                        <div>
+                            <span class="badge bg-dark me-1">{{ prod.codigo }}</span>
+                            <strong class="fs-6">{{ prod.nombre }}</strong>
+                            <small class="text-muted ms-2">(Base: {{ prod.porciones_base }} porciones)</small>
+                        </div>
+                        <div class="small">
+                            <span class="me-3">Costo BOM: <strong class="text-danger">${{ prod.costo_bom_base|floatformat:0|intcomma }}</strong></span>
+                            <span class="me-3">Precio Base: <strong class="text-success">${{ prod.precio_base|floatformat:0|intcomma }}</strong></span>
+                            <span class="badge bg-success-subtle text-success">Margen {{ prod.margen_bruto_pct }}%</span>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Etapa Receta</th>
+                                    <th>Insumo Requerido</th>
+                                    <th>Cant. Neta</th>
+                                    <th>Merma (%)</th>
+                                    <th>Total a Descontar</th>
+                                    <th>Costo Línea</th>
+                                    <th class="text-end">Quitar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in prod.items_bom.all %}
+                                <tr>
+                                    <td><span class="badge bg-light text-dark border">{{ item.get_etapa_uso_display }}</span></td>
+                                    <td class="fw-semibold">{{ item.insumo.nombre }}</td>
+                                    <td>{{ item.cantidad_requerida }} {{ item.insumo.unidad_medida }}</td>
+                                    <td>{{ item.merma_tecnica_pct }}%</td>
+                                    <td class="fw-bold text-primary">{{ item.cantidad_con_merma }} {{ item.insumo.unidad_medida }}</td>
+                                    <td>${{ item.costo_linea|floatformat:0|intcomma }}</td>
+                                    <td class="text-end">
+                                        <form method="post" class="d-inline">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="accion" value="eliminar_item_bom">
+                                            <input type="hidden" name="item_bom_id" value="{{ item.pk }}">
+                                            <button type="submit" class="btn btn-sm btn-link text-danger p-0">
+                                                <i class="bi bi-x-circle"></i>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="7" class="text-muted text-center">Sin componentes BOM registrados.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <!-- Formularios para Añadir Componente BOM o Nueva Receta -->
+            <div class="col-lg-4">
+                <div class="da-card p-4 mb-3">
+                    <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
+                        <i class="bi bi-diagram-2-fill me-1"></i> Añadir Componente a Lista de Materiales (BOM)
+                    </h6>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="agregar_item_bom">
+                        {% for field in bom_form %}
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-1">{{ field.label }}</label>
+                            {{ field }}
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-dulce btn-sm w-100 mt-2">
+                            <i class="bi bi-plus-circle me-1"></i> Vincular Insumo al BOM
+                        </button>
+                    </form>
+                </div>
+
+                <div class="da-card p-4">
+                    <h6 class="fw-bold text-dark border-bottom pb-2 mb-3">
+                        <i class="bi bi-cake2 me-1"></i> Crear Nueva Receta / Producto Base
+                    </h6>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="guardar_producto">
+                        {% for field in producto_form %}
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-1">{{ field.label }}</label>
+                            {{ field }}
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-dark btn-sm w-100 mt-2">
+                            Crear Producto Base
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- PESTAÑA 3: KARDEX DE MOVIMIENTOS DE INVENTARIO -->
+    <div class="tab-pane fade" id="pane-kardex" role="tabpanel">
+        <div class="da-card p-3">
+            <h6 class="fw-bold mb-3">Bitácora Auditable de Movimientos de Inventario y Descuentos BOM</h6>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle small mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Fecha / Hora</th>
+                            <th>Tipo de Movimiento</th>
+                            <th>Insumo</th>
+                            <th>Cantidad</th>
+                            <th>Stock Anterior</th>
+                            <th>Stock Resultante</th>
+                            <th>Pedido Asociado</th>
+                            <th>Glosa de Trazabilidad</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for mov in movimientos %}
+                        <tr>
+                            <td>{{ mov.fecha_movimiento|date:"d/m/Y H:i:s" }}</td>
+                            <td>
+                                {% if mov.tipo_movimiento == 'SALIDA_BOM_PEDIDO' %}
+                                <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Salida Automática BOM</span>
+                                {% elif mov.tipo_movimiento == 'ENTRADA_COMPRA' %}
+                                <span class="badge bg-success-subtle text-success border border-success-subtle">Entrada Compra</span>
+                                {% else %}
+                                <span class="badge bg-warning-subtle text-dark border">{{ mov.get_tipo_movimiento_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="fw-bold">{{ mov.insumo.nombre }}</td>
+                            <td class="fw-bold {% if mov.tipo_movimiento == 'ENTRADA_COMPRA' or mov.tipo_movimiento == 'REVERSION_CANCELACION' %}text-success{% else %}text-danger{% endif %}">
+                                {% if mov.tipo_movimiento == 'ENTRADA_COMPRA' or mov.tipo_movimiento == 'REVERSION_CANCELACION' %}+{% else %}-{% endif %}{{ mov.cantidad }} {{ mov.insumo.unidad_medida }}
+                            </td>
+                            <td>{{ mov.stock_anterior }} {{ mov.insumo.unidad_medida }}</td>
+                            <td class="fw-bold">{{ mov.stock_resultante }} {{ mov.insumo.unidad_medida }}</td>
+                            <td>
+                                {% if mov.pedido_asociado %}
+                                <a href="{% url 'pedido_detalle' mov.pedido_asociado.pk %}" class="fw-bold text-danger text-decoration-none">
+                                    {{ mov.pedido_asociado.codigo_pedido }}
+                                </a>
+                                {% else %}
+                                <span class="text-muted">Bodega Directa</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-muted">{{ mov.motivo }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

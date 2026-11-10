@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Confirmación Digital de Entrega · {{ despacho.pedido.codigo_pedido }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="fw-bold mb-0">
+            <i class="bi bi-pen-fill text-danger me-1"></i> Acta de Confirmación de Entrega · {{ despacho.pedido.codigo_pedido }}
+        </h4>
+        <p class="text-muted small mb-0">
+            Ruta: <strong>{{ despacho.ruta.codigo_ruta }} ({{ despacho.ruta.nombre_ruta }})</strong> · Parada #{{ despacho.orden_parada }}
+        </p>
+    </div>
+    <a href="{% url 'rutas_despacho' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver a Rutas de Despacho
+    </a>
+</div>
+
+<div class="row g-4">
+    <!-- Resumen del Pedido y Certificado Actual -->
+    <div class="col-lg-5">
+        <div class="da-card p-4 mb-3">
+            <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
+                <i class="bi bi-box2-heart me-1"></i> Datos del Pedido en Despacho
+            </h6>
+            <div class="small space-y-2">
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Código de Pedido:</span>
+                    <strong class="text-danger">{{ despacho.pedido.codigo_pedido }}</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Cliente Titular:</span>
+                    <strong>{{ despacho.pedido.cliente.nombre_completo }} ({{ despacho.pedido.cliente.rut }})</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Producto Elaborado:</span>
+                    <strong>{{ despacho.pedido.producto_base.nombre }} ({{ despacho.pedido.porciones_solicitadas }} porc.)</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Dirección de Destino:</span>
+                    <strong>{{ despacho.direccion_destino }}, {{ despacho.comuna_destino }}</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Teléfono Contacto:</span>
+                    <strong>{{ despacho.telefono_contacto }}</strong>
+                </div>
+                <div class="d-flex justify-content-between mb-2">
+                    <span class="text-muted">Ventana Horaria:</span>
+                    <strong>{{ despacho.ventana_horaria }}</strong>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span class="text-muted">Estado Actual:</span>
+                    <span class="badge {% if despacho.estado_entrega == 'ENTREGADO' %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                        {{ despacho.get_estado_entrega_display }}
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        {% if despacho.estado_entrega == 'ENTREGADO' %}
+        <div class="da-card p-4 border-success" style="background: #f0fdf4;">
+            <div class="d-flex align-items-center gap-2 text-success fw-bold mb-2">
+                <i class="bi bi-patch-check-fill fs-4"></i>
+                <span>CERTIFICADO DE RECEPCIÓN CONFORME</span>
+            </div>
+            <div class="small text-dark mb-3">
+                <div><strong>Receptor:</strong> {{ despacho.nombre_receptor }} (RUT: {{ despacho.rut_receptor }})</div>
+                <div><strong>Relación:</strong> {{ despacho.parentesco_o_cargo }}</div>
+                <div><strong>Fecha/Hora Exacta:</strong> {{ despacho.fecha_hora_confirmacion|date:"d/m/Y H:i:s" }}</div>
+                <div><strong>Cadena de Frío en Entrega:</strong> {{ despacho.temperatura_entrega_c }} °C · GPS: {{ despacho.coordenadas_gps }}</div>
+                {% if despacho.observaciones_entrega %}
+                <div class="mt-1"><strong>Observaciones:</strong> {{ despacho.observaciones_entrega }}</div>
+                {% endif %}
+            </div>
+
+            {% if despacho.firma_digital_base64 %}
+            <div class="bg-white p-3 rounded-3 border text-center mb-2">
+                <div class="small text-muted mb-1">Firma Digital Registrada del Receptor:</div>
+                <img src="{{ despacho.firma_digital_base64 }}" alt="Firma Digital" class="img-fluid" style="max-height: 150px;">
+            </div>
+            {% endif %}
+
+            {% if despacho.comprobante_foto %}
+            <div class="bg-white p-3 rounded-3 border text-center">
+                <div class="small text-muted mb-1">Fotografía de Comprobante de Entrega:</div>
+                <img src="{{ despacho.comprobante_foto.url }}" alt="Comprobante Foto" class="img-fluid rounded" style="max-height: 200px;">
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Formulario Interactivo con Lienzo Canvas HTML5 de Firma Digital y Subida de Foto -->
+    <div class="col-lg-7">
+        <div class="da-card p-4">
+            <h5 class="fw-bold text-dark mb-1">
+                Registro de Firma Digital y/o Comprobante Fotográfico
+            </h5>
+            <p class="text-muted small mb-3">
+                Solicita al receptor firmar en el recuadro táctil o adjunta la fotografía del comprobante de entrega.
+            </p>
+
+            <form method="post" enctype="multipart/form-data" id="formConfirmarEntrega">
+                {% csrf_token %}
+                <div class="row g-3 mb-3">
+                    <div class="col-md-5">
+                        <label class="form-label small fw-bold">Nombre Completo de Quien Recibe *</label>
+                        <input type="text" name="nombre_receptor" class="form-control" value="{{ despacho.nombre_receptor|default:despacho.pedido.cliente.nombre_completo }}" required>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">RUT Receptor *</label>
+                        <input type="text" name="rut_receptor" class="form-control" value="{{ despacho.rut_receptor|default:despacho.pedido.cliente.rut }}" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Relación / Cargo</label>
+                        <input type="text" name="parentesco_o_cargo" class="form-control" value="{{ despacho.parentesco_o_cargo|default:'Cliente Titular' }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Temp. Producto (°C)</label>
+                        <input type="number" step="0.1" name="temperatura_entrega_c" class="form-control" value="{{ despacho.temperatura_entrega_c|default:'4.2' }}">
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label small fw-bold">Coordenadas GPS de Recepción</label>
+                        <div class="input-group">
+                            <input type="text" name="coordenadas_gps" id="id_coordenadas_gps" class="form-control" value="{{ despacho.coordenadas_gps|default:'-33.4262, -70.6109' }}">
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="obtenerGPS()">
+                                <i class="bi bi-crosshair"></i> Capturar GPS
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lienzo HTML5 de Firma Digital -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <label class="form-label small fw-bold mb-0">
+                            <i class="bi bi-vector-pen text-danger me-1"></i> Opción A: Trazar Firma Digital del Receptor en Pantalla (Canvas HTML5)
+                        </label>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-outline-primary btn-sm py-0" onclick="generarFirmaDemo()">
+                                ✨ Trazar Firma Demo Rápida
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm py-0" onclick="limpiarFirma()">
+                                <i class="bi bi-eraser"></i> Limpiar Lienzo
+                            </button>
+                        </div>
+                    </div>
+                    <div class="signature-pad-wrapper">
+                        <canvas id="signatureCanvas" width="620" height="220"></canvas>
+                    </div>
+                    <input type="hidden" name="firma_digital_base64" id="id_firma_digital_base64" value="{{ despacho.firma_digital_base64 }}">
+                    <small class="text-muted">Dibuja la firma con el mouse o pantalla táctil.</small>
+                </div>
+
+                <!-- Subida de Fotografía de Comprobante -->
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">
+                        <i class="bi bi-camera-fill text-danger me-1"></i> Opción B: Adjuntar Comprobante Fotográfico de Entrega (Imagen)
+                    </label>
+                    <input type="file" name="comprobante_foto" accept="image/*" class="form-control">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">Observaciones de Entrega / Conformidad</label>
+                    <textarea name="observaciones_entrega" rows="2" class="form-control" placeholder="Ej: Torta entregada en perfecto estado estético y térmico al cliente.">{{ despacho.observaciones_entrega }}</textarea>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="submit" class="btn btn-dulce px-4 py-2">
+                        <i class="bi bi-check2-circle me-1"></i> Confirmar Entrega y Emitir Acta Digital
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const canvas = document.getElementById('signatureCanvas');
+const ctx = canvas.getContext('2d');
+const hiddenInput = document.getElementById('id_firma_digital_base64');
+let drawing = false;
+let hasDrawn = false;
+
+function initCanvas() {
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2.6;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Línea base de firma
+    ctx.beginPath();
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.moveTo(40, 175);
+    ctx.lineTo(580, 175);
+    ctx.stroke();
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 2.6;
+}
+initCanvas();
+
+function getPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+    };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    drawing = true;
+    hasDrawn = true;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (!drawing) return;
+    const pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+});
+
+window.addEventListener('mouseup', () => {
+    if (drawing) {
+        drawing = false;
+        hiddenInput.value = canvas.toDataURL('image/png');
+    }
+});
+
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    drawing = true;
+    hasDrawn = true;
+    const pos = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    if (!drawing) return;
+    const pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => {
+    if (drawing) {
+        drawing = false;
+        hiddenInput.value = canvas.toDataURL('image/png');
+    }
+});
+
+function limpiarFirma() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    initCanvas();
+    hasDrawn = false;
+    hiddenInput.value = '';
+}
+
+function generarFirmaDemo() {
+    limpiarFirma();
+    ctx.beginPath();
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 2.8;
+    ctx.moveTo(120, 145);
+    ctx.bezierCurveTo(150, 75, 210, 185, 260, 110);
+    ctx.bezierCurveTo(300, 65, 340, 165, 410, 125);
+    ctx.bezierCurveTo(445, 105, 480, 155, 515, 130);
+    ctx.stroke();
+
+    ctx.font = 'italic 13px sans-serif';
+    ctx.fillStyle = '#475569';
+    ctx.fillText('Firmado digitalmente conforme - Dulce Arte', 175, 198);
+
+    hasDrawn = true;
+    hiddenInput.value = canvas.toDataURL('image/png');
+}
+
+function obtenerGPS() {
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                document.getElementById('id_coordenadas_gps').value =
+                    pos.coords.latitude.toFixed(5) + ', ' + pos.coords.longitude.toFixed(5);
+            },
+            () => {
+                document.getElementById('id_coordenadas_gps').value = '-33.41890, -70.60630 (Providencia)';
+            }
+        );
+    }
+}
+</script>
+{% endblock %}

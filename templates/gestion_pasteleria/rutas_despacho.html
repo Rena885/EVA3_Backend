@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Rutas de Despacho y Confirmación Digital · Dulce Arte{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+        <h4 class="fw-bold mb-0">
+            <i class="bi bi-truck text-danger me-1"></i> 4. Gestión de Rutas de Despacho y Confirmación Digital
+        </h4>
+        <p class="text-muted small mb-0">
+            Planificación de rutas refrigeradas, orden de paradas y recepción conforme mediante Firma Digital (Canvas HTML5) o Comprobante Fotográfico.
+        </p>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Listado de Rutas y Paradas de Entrega -->
+    <div class="col-lg-8">
+        {% for ruta in rutas %}
+        <div class="da-card p-4 mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-2 gap-2">
+                <div>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="badge bg-dark fs-6">{{ ruta.codigo_ruta }}</span>
+                        <h5 class="fw-bold mb-0">{{ ruta.nombre_ruta }}</h5>
+                        <span class="badge {% if ruta.estado_ruta == 'COMPLETADA' %}bg-success{% elif ruta.estado_ruta == 'EN_RUTA' %}bg-warning text-dark{% else %}bg-info text-dark{% endif %}">
+                            {{ ruta.get_estado_ruta_display }}
+                        </span>
+                    </div>
+                    <small class="text-muted">
+                        <i class="bi bi-person-Vcard me-1"></i>Repartidor: <strong>{{ ruta.repartidor.get_full_name|default:ruta.repartidor.username }}</strong> ·
+                        <i class="bi bi-snow2 ms-2 me-1 text-info"></i>Vehículo: <strong>{{ ruta.vehiculo_patente }}</strong> ({{ ruta.temperatura_salida_c }}°C) ·
+                        Fecha: <strong>{{ ruta.fecha_ruta|date:"d/m/Y" }} ({{ ruta.hora_salida_programada|time:"H:i" }})</strong>
+                    </small>
+                </div>
+
+                <div>
+                    {% if ruta.estado_ruta == 'PLANIFICADA' %}
+                    <form method="post" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="iniciar_ruta">
+                        <input type="hidden" name="ruta_id" value="{{ ruta.pk }}">
+                        <button type="submit" class="btn btn-warning btn-sm fw-bold">
+                            <i class="bi bi-play-fill"></i> Iniciar Salida a Ruta
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Barra de Progreso de la Ruta -->
+            <div class="mb-3">
+                <div class="d-flex justify-content-between small text-muted mb-1">
+                    <span>Progreso de Entregas en Ruta</span>
+                    <strong>{{ ruta.paradas_entregadas }} de {{ ruta.total_paradas }} paradas confirmadas ({{ ruta.porcentaje_completado }}%)</strong>
+                </div>
+                <div class="progress" style="height: 8px;">
+                    <div class="progress-bar bg-success" style="width: {{ ruta.porcentaje_completado }}%;"></div>
+                </div>
+            </div>
+
+            <!-- Tabla de Paradas de la Ruta -->
+            <div class="table-responsive">
+                <table class="table table-hover align-middle small mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Parada</th>
+                            <th>Pedido / Producto</th>
+                            <th>Cliente & Destino</th>
+                            <th>Ventana Horaria</th>
+                            <th>Estado Entrega</th>
+                            <th>Evidencia Digital</th>
+                            <th class="text-end">Confirmación</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for entrega in ruta.entregas.all %}
+                        <tr>
+                            <td><span class="badge rounded-pill bg-secondary">#{{ entrega.orden_parada }}</span></td>
+                            <td>
+                                <a href="{% url 'pedido_detalle' entrega.pedido.pk %}" class="fw-bold text-danger text-decoration-none">
+                                    {{ entrega.pedido.codigo_pedido }}
+                                </a>
+                                <small class="d-block text-muted">{{ entrega.pedido.producto_base.nombre }}</small>
+                            </td>
+                            <td>
+                                <div class="fw-semibold">{{ entrega.pedido.cliente.nombre_completo }}</div>
+                                <small class="text-muted">{{ entrega.direccion_destino }}, {{ entrega.comuna_destino }}</small>
+                            </td>
+                            <td>{{ entrega.ventana_horaria }}</td>
+                            <td>
+                                {% if entrega.estado_entrega == 'ENTREGADO' %}
+                                <span class="badge bg-success">✔ Entregado</span>
+                                {% elif entrega.estado_entrega == 'EN_CAMINO' %}
+                                <span class="badge bg-warning text-dark">🚚 En Camino</span>
+                                {% else %}
+                                <span class="badge bg-light text-dark border">{{ entrega.get_estado_entrega_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if entrega.firma_digital_base64 %}
+                                <div class="d-flex align-items-center gap-2">
+                                    <img src="{{ entrega.firma_digital_base64 }}" alt="Firma" class="border rounded bg-white" style="height: 32px;">
+                                    <small class="text-success fw-semibold">
+                                        ✍️ {{ entrega.nombre_receptor }}
+                                    </small>
+                                </div>
+                                {% elif entrega.comprobante_foto %}
+                                <span class="badge bg-info-subtle text-info-emphasis">📷 Foto Adjunta</span>
+                                {% else %}
+                                <span class="text-muted">Sin confirmar</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{% url 'confirmar_entrega' entrega.pk %}" class="btn btn-sm {% if entrega.estado_entrega == 'ENTREGADO' %}btn-outline-success{% else %}btn-dulce{% endif %}">
+                                    {% if entrega.estado_entrega == 'ENTREGADO' %}
+                                    <i class="bi bi-file-earmark-check me-1"></i> Ver Acta
+                                    {% else %}
+                                    <i class="bi bi-pen-fill me-1"></i> Firmar / Entregar
+                                    {% endif %}
+                                </a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-3">Sin paradas asignadas a esta ruta.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% empty %}
+        <div class="da-card p-4 text-center text-muted">
+            No hay rutas de despacho registradas aún.
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Formularios Laterales: Asignar Pedido a Ruta y Crear Nueva Ruta -->
+    <div class="col-lg-4">
+        <div class="da-card p-4 mb-4">
+            <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
+                <i class="bi bi-geo-alt-fill me-1"></i> Asignar Pedido a Parada de Ruta ({{ pedidos_sin_ruta_count }} disponibles)
+            </h6>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="asignar_pedido_ruta">
+                {% for field in despacho_form %}
+                <div class="mb-2">
+                    <label class="form-label small fw-bold mb-1">{{ field.label }}</label>
+                    {{ field }}
+                </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-dulce btn-sm w-100 mt-2">
+                    <i class="bi bi-plus-circle me-1"></i> Agregar Parada a la Ruta
+                </button>
+            </form>
+        </div>
+
+        <div class="da-card p-4">
+            <h6 class="fw-bold text-dark border-bottom pb-2 mb-3">
+                <i class="bi bi-truck-front me-1"></i> Planificar Nueva Ruta de Despacho
+            </h6>
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="accion" value="crear_ruta">
+                <div class="row g-2">
+                    {% for field in ruta_form %}
+                    <div class="{% if field.name in 'codigo_ruta,vehiculo_patente,temperatura_salida_c,fecha_ruta,hora_salida_programada' %}col-6{% else %}col-12{% endif %}">
+                        <label class="form-label small fw-bold mb-1">{{ field.label }}</label>
+                        {{ field }}
+                    </div>
+                    {% endfor %}
+                </div>
+                <button type="submit" class="btn btn-dark btn-sm w-100 mt-3">
+                    Crear Hoja de Ruta
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

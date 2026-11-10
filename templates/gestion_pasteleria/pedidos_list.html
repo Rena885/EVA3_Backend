@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Cotizaciones y Pedidos Personalizados · Dulce Arte{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+        <h4 class="fw-bold mb-0">1. Cotización y Registro de Pedidos Personalizados</h4>
+        <p class="text-muted small mb-0">Gestión comercial de tortas a medida, cálculo automático por porciones/complejidad y explosión BOM.</p>
+    </div>
+    <a href="{% url 'pedido_crear' %}" class="btn btn-dulce">
+        <i class="bi bi-plus-lg me-1"></i> Nueva Cotización / Pedido Personalizado
+    </a>
+</div>
+
+<!-- Barra de Filtros y Búsqueda -->
+<div class="da-card p-3 mb-3">
+    <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label small fw-bold mb-1">Buscar por Código, Cliente, RUT o Sabor</label>
+            <input type="text" name="q" value="{{ busqueda }}" class="form-control form-control-sm" placeholder="Ej: DA-2026-0001, Camila, Frambuesa...">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small fw-bold mb-1">Etapa en Taller Kanban</label>
+            <select name="estado_kanban" class="form-select form-select-sm">
+                <option value="">-- Todas las etapas --</option>
+                {% for cod, nombre in estados_kanban %}
+                <option value="{{ cod }}" {% if filtro_kanban == cod %}selected{% endif %}>{{ nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small fw-bold mb-1">Estado Comercial</label>
+            <select name="estado_comercial" class="form-select form-select-sm">
+                <option value="">-- Todos los estados --</option>
+                {% for cod, nombre in estados_comerciales %}
+                <option value="{{ cod }}" {% if filtro_comercial == cod %}selected{% endif %}>{{ nombre }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2 d-flex gap-1">
+            <button type="submit" class="btn btn-dark btn-sm w-100"><i class="bi bi-funnel"></i> Filtrar</button>
+            <a href="{% url 'pedidos_list' %}" class="btn btn-outline-secondary btn-sm">Limpiar</a>
+        </div>
+    </form>
+</div>
+
+<!-- Tabla de Pedidos Personalizados -->
+<div class="da-card p-3">
+    <div class="table-responsive">
+        <table class="table table-hover align-middle small mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Código</th>
+                    <th>Cliente</th>
+                    <th>Producto Base & Personalización</th>
+                    <th>Porciones</th>
+                    <th>Fecha Entrega</th>
+                    <th>Etapa Kanban</th>
+                    <th>Estado BOM</th>
+                    <th>Total Cotizado</th>
+                    <th class="text-end">Acciones CRUD</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pedido in pedidos %}
+                <tr>
+                    <td>
+                        <a href="{% url 'pedido_detalle' pedido.pk %}" class="fw-bold text-danger text-decoration-none">
+                            {{ pedido.codigo_pedido }}
+                        </a>
+                        <small class="d-block text-muted">{{ pedido.get_estado_comercial_display }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ pedido.cliente.nombre_completo }}</div>
+                        <small class="text-muted">{{ pedido.cliente.rut }} · {{ pedido.comuna_entrega }}</small>
+                    </td>
+                    <td>
+                        <div class="fw-bold text-dark">{{ pedido.producto_base.nombre }}</div>
+                        <small class="text-muted d-block">Bizcocho: {{ pedido.sabor_bizcocho }} | Relleno: {{ pedido.relleno_principal }}</small>
+                        {% if pedido.dedicatoria_texto %}
+                        <span class="badge bg-light text-secondary border mt-1">💬 "{{ pedido.dedicatoria_texto }}"</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="badge bg-dark rounded-pill">{{ pedido.porciones_solicitadas }} porc.</span>
+                        <small class="d-block text-muted">Factor {{ pedido.factor_escala_porciones }}x</small>
+                    </td>
+                    <td>
+                        <div class="fw-semibold">{{ pedido.fecha_entrega_comprometida|date:"d/m/Y H:i" }}</div>
+                        <small class="text-muted">{{ pedido.get_modalidad_entrega_display }}</small>
+                    </td>
+                    <td>
+                        <span class="badge rounded-pill text-bg-warning">{{ pedido.get_estado_kanban_display }}</span>
+                    </td>
+                    <td>
+                        {% if pedido.insumos_descontados %}
+                        <span class="badge bg-success-subtle text-success border border-success-subtle">✔ BOM Descontado</span>
+                        {% else %}
+                        <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">⏳ Pendiente BOM</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div class="fw-bold text-success fs-6">${{ pedido.precio_total|floatformat:0|intcomma }}</div>
+                        <small class="text-muted">Saldo: ${{ pedido.saldo_pendiente|floatformat:0|intcomma }}</small>
+                    </td>
+                    <td class="text-end">
+                        <div class="btn-group btn-group-sm">
+                            <a href="{% url 'pedido_detalle' pedido.pk %}" class="btn btn-outline-primary" title="Ver Explosión BOM y Trazabilidad">
+                                <i class="bi bi-eye"></i> BOM
+                            </a>
+                            <a href="{% url 'pedido_editar' pedido.pk %}" class="btn btn-outline-secondary" title="Editar Pedido">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <a href="{% url 'pedido_eliminar' pedido.pk %}" class="btn btn-outline-danger" title="Eliminar Pedido">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </div>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="9" class="text-center py-4 text-muted">
+                        No se encontraron pedidos personalizados con los filtros seleccionados.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

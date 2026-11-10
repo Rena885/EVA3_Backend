@@ -1,0 +1,526 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Administración General en Página · Dulce Arte{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+        <h4 class="fw-bold mb-0">
+            <i class="bi bi-sliders2-vertical text-danger me-1"></i> Centro de Administración Unificado (Todo en la Misma Página)
+        </h4>
+        <p class="text-muted small mb-0">
+            Administra en una sola vista todos los modelos del sistema: Pedidos, Clientes, Bodega/Categorías, Recetas BOM, Logística y Usuarios/Roles.
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'pedido_crear' %}" class="btn btn-dulce btn-sm">
+            <i class="bi bi-plus-circle me-1"></i> Nuevo Pedido
+        </a>
+    </div>
+</div>
+
+<!-- Pestañas Unificadas -->
+<ul class="nav nav-pills mb-3 gap-1 bg-white p-2 rounded-3 border" id="adminUnificadoTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if tab_activa == 'pedidos' %}active{% endif %} btn-sm fw-semibold" data-bs-toggle="pill" data-bs-target="#tab-admin-pedidos" type="button">
+            <i class="bi bi-receipt me-1"></i> Pedidos y Kanban ({{ pedidos|length }})
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if tab_activa == 'clientes' %}active{% endif %} btn-sm fw-semibold" data-bs-toggle="pill" data-bs-target="#tab-admin-clientes" type="button">
+            <i class="bi bi-people me-1"></i> Clientes ({{ clientes|length }})
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if tab_activa == 'bodega' %}active{% endif %} btn-sm fw-semibold" data-bs-toggle="pill" data-bs-target="#tab-admin-bodega" type="button">
+            <i class="bi bi-boxes me-1"></i> Insumos y Categorías ({{ insumos|length }})
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if tab_activa == 'bom' %}active{% endif %} btn-sm fw-semibold" data-bs-toggle="pill" data-bs-target="#tab-admin-bom" type="button">
+            <i class="bi bi-diagram-3 me-1"></i> Productos y Recetas BOM ({{ productos|length }})
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if tab_activa == 'logistica' %}active{% endif %} btn-sm fw-semibold" data-bs-toggle="pill" data-bs-target="#tab-admin-logistica" type="button">
+            <i class="bi bi-truck me-1"></i> Rutas y Despachos ({{ despachos|length }})
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if tab_activa == 'usuarios' %}active{% endif %} btn-sm fw-semibold" data-bs-toggle="pill" data-bs-target="#tab-admin-usuarios" type="button">
+            <i class="bi bi-shield-lock me-1"></i> Usuarios y Roles ({{ perfiles|length }})
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link {% if tab_activa == 'auditoria' %}active{% endif %} btn-sm fw-semibold" data-bs-toggle="pill" data-bs-target="#tab-admin-auditoria" type="button">
+            <i class="bi bi-clock-history me-1"></i> Auditoría Kardex y Kanban
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- 1. PEDIDOS Y KANBAN -->
+    <div class="tab-pane fade {% if tab_activa == 'pedidos' %}show active{% endif %}" id="tab-admin-pedidos">
+        <div class="da-card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0">Administración de Pedidos Personalizados</h6>
+                <a href="{% url 'pedido_crear' %}" class="btn btn-dulce btn-sm">+ Crear Pedido</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle small mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Código</th>
+                            <th>Cliente</th>
+                            <th>Producto Base</th>
+                            <th>Porciones</th>
+                            <th>Etapa Kanban</th>
+                            <th>Estado Comercial</th>
+                            <th>BOM</th>
+                            <th>Precio Total</th>
+                            <th class="text-end">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in pedidos %}
+                        <tr>
+                            <td class="fw-bold text-danger">{{ p.codigo_pedido }}</td>
+                            <td>{{ p.cliente.nombre_completo }}</td>
+                            <td>{{ p.producto_base.nombre }}</td>
+                            <td>{{ p.porciones_solicitadas }}</td>
+                            <td><span class="badge bg-warning text-dark">{{ p.get_estado_kanban_display }}</span></td>
+                            <td>{{ p.get_estado_comercial_display }}</td>
+                            <td>
+                                {% if p.insumos_descontados %}
+                                <span class="badge bg-success">Descontado</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Pendiente</span>
+                                {% endif %}
+                            </td>
+                            <td class="fw-bold">${{ p.precio_total|floatformat:0|intcomma }}</td>
+                            <td class="text-end">
+                                <a href="{% url 'pedido_detalle' p.pk %}" class="btn btn-sm btn-outline-primary">Ficha</a>
+                                <a href="{% url 'pedido_editar' p.pk %}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                                <a href="{% url 'pedido_eliminar' p.pk %}" class="btn btn-sm btn-outline-danger">Eliminar</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. CLIENTES -->
+    <div class="tab-pane fade {% if tab_activa == 'clientes' %}show active{% endif %}" id="tab-admin-clientes">
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="da-card p-3">
+                    <h6 class="fw-bold mb-3">Clientes Registrados</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>RUT</th>
+                                    <th>Nombre</th>
+                                    <th>Tipo</th>
+                                    <th>Teléfono / Email</th>
+                                    <th>Comuna</th>
+                                    <th>Alergias</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in clientes %}
+                                <tr>
+                                    <td class="fw-bold">{{ c.rut }}</td>
+                                    <td>{{ c.nombre_completo }}</td>
+                                    <td>{{ c.get_tipo_cliente_display }}</td>
+                                    <td>{{ c.telefono }} · {{ c.email }}</td>
+                                    <td>{{ c.comuna }}</td>
+                                    <td>{{ c.preferencias_alimentarias|default:"-" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="da-card p-3">
+                    <h6 class="fw-bold text-danger mb-2">Crear Nuevo Cliente</h6>
+                    <form method="post" action="{% url 'clientes_list' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="guardar">
+                        {% for field in cliente_form %}
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-0">{{ field.label }}</label>
+                            {{ field }}
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-dulce btn-sm w-100 mt-2">Guardar Cliente</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. BODEGA, INSUMOS Y CATEGORÍAS -->
+    <div class="tab-pane fade {% if tab_activa == 'bodega' %}show active{% endif %}" id="tab-admin-bodega">
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="da-card p-3 mb-3">
+                    <h6 class="fw-bold mb-2">Categorías de Insumos</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Categoría</th>
+                                    <th>Descripción</th>
+                                    <th>Perecible</th>
+                                    <th>Cadena Frío</th>
+                                    <th class="text-end">Eliminar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for cat in categorias %}
+                                <tr>
+                                    <td class="fw-bold">{{ cat.nombre }}</td>
+                                    <td>{{ cat.descripcion }}</td>
+                                    <td>{{ cat.es_perecible|yesno:"Sí,No" }}</td>
+                                    <td>{{ cat.requiere_cadena_frio|yesno:"Sí,No" }}</td>
+                                    <td class="text-end">
+                                        <form method="post" class="d-inline">
+                                            {% csrf_token %}
+                                            <input type="hidden" name="accion" value="eliminar_categoria">
+                                            <input type="hidden" name="categoria_id" value="{{ cat.pk }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger py-0">Eliminar</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="da-card p-3">
+                    <h6 class="fw-bold mb-2">Insumos en Bodega</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>SKU</th>
+                                    <th>Insumo</th>
+                                    <th>Stock Actual</th>
+                                    <th>Stock Mínimo</th>
+                                    <th>Costo Unit.</th>
+                                    <th>Vencimiento</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for ins in insumos %}
+                                <tr>
+                                    <td><code>{{ ins.codigo_sku }}</code></td>
+                                    <td class="fw-semibold">{{ ins.nombre }}</td>
+                                    <td class="fw-bold {% if ins.en_alerta_stock %}text-danger{% else %}text-success{% endif %}">
+                                        {{ ins.stock_actual }} {{ ins.unidad_medida }}
+                                    </td>
+                                    <td>{{ ins.stock_minimo }} {{ ins.unidad_medida }}</td>
+                                    <td>${{ ins.costo_unitario|floatformat:0|intcomma }}</td>
+                                    <td>{{ ins.fecha_vencimiento|date:"d/m/Y"|default:"No perecible" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="da-card p-3 mb-3">
+                    <h6 class="fw-bold text-danger mb-2">Nueva Categoría de Insumo</h6>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="guardar_categoria">
+                        {% for field in categoria_form %}
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-0">{{ field.label }}</label>
+                            {{ field }}
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-dark btn-sm w-100 mt-2">Guardar Categoría</button>
+                    </form>
+                </div>
+
+                <div class="da-card p-3">
+                    <h6 class="fw-bold text-danger mb-2">Nuevo Insumo en Bodega</h6>
+                    <form method="post" action="{% url 'inventario_bom' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="guardar_insumo">
+                        {% for field in insumo_form %}
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-0">{{ field.label }}</label>
+                            {{ field }}
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-dulce btn-sm w-100 mt-2">Guardar Insumo</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. PRODUCTOS Y RECETAS BOM -->
+    <div class="tab-pane fade {% if tab_activa == 'bom' %}show active{% endif %}" id="tab-admin-bom">
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="da-card p-3">
+                    <h6 class="fw-bold mb-2">Líneas de Lista de Materiales (BOM) por Producto Base</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Producto Base</th>
+                                    <th>Etapa</th>
+                                    <th>Insumo</th>
+                                    <th>Cant. Neta</th>
+                                    <th>Merma %</th>
+                                    <th>Total c/Merma</th>
+                                    <th>Costo Línea</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for b in items_bom %}
+                                <tr>
+                                    <td class="fw-semibold">{{ b.producto.nombre }}</td>
+                                    <td>{{ b.get_etapa_uso_display }}</td>
+                                    <td>{{ b.insumo.nombre }}</td>
+                                    <td>{{ b.cantidad_requerida }} {{ b.insumo.unidad_medida }}</td>
+                                    <td>{{ b.merma_tecnica_pct }}%</td>
+                                    <td class="fw-bold text-primary">{{ b.cantidad_con_merma }} {{ b.insumo.unidad_medida }}</td>
+                                    <td>${{ b.costo_linea|floatformat:0|intcomma }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="da-card p-3">
+                    <h6 class="fw-bold text-danger mb-2">Vincular Nuevo Componente al BOM</h6>
+                    <form method="post" action="{% url 'inventario_bom' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="agregar_item_bom">
+                        {% for field in bom_form %}
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-0">{{ field.label }}</label>
+                            {{ field }}
+                        </div>
+                        {% endfor %}
+                        <button type="submit" class="btn btn-dulce btn-sm w-100 mt-2">Añadir a Receta BOM</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. LOGÍSTICA, RUTAS Y DESPACHOS -->
+    <div class="tab-pane fade {% if tab_activa == 'logistica' %}show active{% endif %}" id="tab-admin-logistica">
+        <div class="da-card p-3">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0">Paradas de Despacho y Estado de Firma Digital</h6>
+                <a href="{% url 'rutas_despacho' %}" class="btn btn-outline-dark btn-sm">Ir a Gestión de Rutas</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle small mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Ruta</th>
+                            <th>Parada</th>
+                            <th>Pedido</th>
+                            <th>Cliente / Destino</th>
+                            <th>Estado Entrega</th>
+                            <th>Receptor</th>
+                            <th>Respaldo Digital</th>
+                            <th class="text-end">Acta</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in despachos %}
+                        <tr>
+                            <td class="fw-bold">{{ d.ruta.codigo_ruta }}</td>
+                            <td>#{{ d.orden_parada }}</td>
+                            <td class="fw-bold text-danger">{{ d.pedido.codigo_pedido }}</td>
+                            <td>{{ d.pedido.cliente.nombre_completo }} ({{ d.comuna_destino }})</td>
+                            <td>{{ d.get_estado_entrega_display }}</td>
+                            <td>{{ d.nombre_receptor|default:"-" }}</td>
+                            <td>
+                                {% if d.firma_digital_base64 %}
+                                <span class="badge bg-success">Firma Digital OK</span>
+                                {% elif d.comprobante_foto %}
+                                <span class="badge bg-info text-dark">Foto Comprobante</span>
+                                {% else %}
+                                <span class="badge bg-secondary">Pendiente</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <a href="{% url 'confirmar_entrega' d.pk %}" class="btn btn-sm btn-dulce">Firmar / Ver</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. USUARIOS Y PERFILES DE ROL -->
+    <div class="tab-pane fade {% if tab_activa == 'usuarios' %}show active{% endif %}" id="tab-admin-usuarios">
+        <div class="row g-3">
+            <div class="col-lg-8">
+                <div class="da-card p-3">
+                    <h6 class="fw-bold mb-3">Personal y Perfiles de Rol Operativo</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Nombre Completo</th>
+                                    <th>Rol Asignado</th>
+                                    <th>RUT</th>
+                                    <th>Turno</th>
+                                    <th>Especialidad</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for pf in perfiles %}
+                                <tr>
+                                    <td class="fw-bold">{{ pf.usuario.username }}</td>
+                                    <td>{{ pf.usuario.get_full_name }}</td>
+                                    <td><span class="badge bg-dark">{{ pf.get_rol_display }}</span></td>
+                                    <td>{{ pf.rut }}</td>
+                                    <td>{{ pf.get_turno_display }}</td>
+                                    <td>{{ pf.especialidad_pastelera }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4">
+                <div class="da-card p-3">
+                    <h6 class="fw-bold text-danger mb-2">Crear / Actualizar Usuario y Rol</h6>
+                    <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="crear_usuario_rol">
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-0">Username *</label>
+                            <input type="text" name="username" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-0">Contraseña Inicial *</label>
+                            <input type="password" name="password" value="dulcearte2026" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label small fw-bold mb-0">Nombre</label>
+                                <input type="text" name="first_name" class="form-control form-control-sm">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold mb-0">Apellido</label>
+                                <input type="text" name="last_name" class="form-control form-control-sm">
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-0">Rol Operativo *</label>
+                            <select name="rol" class="form-select form-select-sm">
+                                {% for cod, etiqueta in roles_choices %}
+                                <option value="{{ cod }}">{{ etiqueta }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-0">RUT Trabajador</label>
+                            <input type="text" name="rut" class="form-control form-control-sm">
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label small fw-bold mb-0">Turno</label>
+                            <select name="turno" class="form-select form-select-sm">
+                                {% for cod, etiqueta in turnos_choices %}
+                                <option value="{{ cod }}">{{ etiqueta }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-dulce btn-sm w-100 mt-2">Guardar Usuario</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 7. AUDITORÍA KARDEX Y KANBAN -->
+    <div class="tab-pane fade {% if tab_activa == 'auditoria' %}show active{% endif %}" id="tab-admin-auditoria">
+        <div class="row g-3">
+            <div class="col-lg-6">
+                <div class="da-card p-3">
+                    <h6 class="fw-bold mb-2">Últimos Movimientos de Inventario (Kardex BOM)</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Insumo</th>
+                                    <th>Cant.</th>
+                                    <th>Saldo</th>
+                                    <th>Pedido</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for m in movimientos %}
+                                <tr>
+                                    <td>{{ m.fecha_movimiento|date:"d/m H:i" }}</td>
+                                    <td>{{ m.insumo.nombre }}</td>
+                                    <td class="fw-bold">{{ m.cantidad }}</td>
+                                    <td>{{ m.stock_resultante }}</td>
+                                    <td>{{ m.pedido_asociado.codigo_pedido|default:"Bodega" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="da-card p-3">
+                    <h6 class="fw-bold mb-2">Historial de Transiciones Kanban en Cocina</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle small mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fecha</th>
+                                    <th>Pedido</th>
+                                    <th>Transición</th>
+                                    <th>Usuario</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for h in historial_kanban %}
+                                <tr>
+                                    <td>{{ h.fecha_cambio|date:"d/m H:i" }}</td>
+                                    <td class="fw-bold text-danger">{{ h.pedido.codigo_pedido }}</td>
+                                    <td>{{ h.estado_anterior }} → {{ h.estado_nuevo }}</td>
+                                    <td>{{ h.usuario.username|default:"Sistema" }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

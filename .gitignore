@@ -1,0 +1,23 @@
+# Python & Virtualenv
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+
+# Environment variables
+.env
+
+# Local SQLite fallback if used
+db.sqlite3
+
+# Media uploads & Static build
+staticfiles/
+media/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

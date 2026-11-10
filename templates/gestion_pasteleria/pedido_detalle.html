@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Trazabilidad Pedido {{ pedido.codigo_pedido }} · Dulce Arte{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+        <div class="d-flex align-items-center gap-2">
+            <h4 class="fw-bold mb-0">Ficha de Trazabilidad End-to-End · {{ pedido.codigo_pedido }}</h4>
+            <span class="badge bg-warning text-dark fs-6">{{ pedido.get_estado_kanban_display }}</span>
+            <span class="badge bg-dark">{{ pedido.get_estado_comercial_display }}</span>
+        </div>
+        <p class="text-muted small mb-0">
+            Cliente: <strong>{{ pedido.cliente.nombre_completo }}</strong> ({{ pedido.cliente.rut }}) · Entrega comprometida: <strong>{{ pedido.fecha_entrega_comprometida|date:"d/m/Y H:i" }}</strong>
+        </p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        {% if pedido.estado_comercial == 'COTIZACION' %}
+        <form method="post" class="d-inline">
+            {% csrf_token %}
+            <input type="hidden" name="accion" value="confirmar_cotizacion">
+            <button type="submit" class="btn btn-success btn-sm fw-bold">
+                <i class="bi bi-check2-all me-1"></i> Aprobar Cotización (Abono 50%)
+            </button>
+        </form>
+        {% endif %}
+        <a href="{% url 'kanban_cocina' %}" class="btn btn-warning btn-sm fw-semibold">
+            <i class="bi bi-kanban me-1"></i> Ver en Tablero Kanban
+        </a>
+        <a href="{% url 'pedido_editar' pedido.pk %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-pencil me-1"></i> Editar
+        </a>
+        <a href="/api/v1/pedidos/{{ pedido.pk }}/explosion_bom/" target="_blank" class="btn btn-outline-dark btn-sm">
+            <i class="bi bi-braces me-1"></i> JSON BOM (API)
+        </a>
+    </div>
+</div>
+
+<!-- Barra de Progreso de Trazabilidad Kanban -->
+<div class="da-card p-3 mb-4">
+    <div class="d-flex justify-content-between small fw-bold mb-1">
+        <span>Avance de Elaboración en Taller de Cocina: {{ pedido.get_estado_kanban_display }}</span>
+        <span>{{ pedido.porcentaje_avance_kanban }}% Completado</span>
+    </div>
+    <div class="progress" style="height: 12px;">
+        <div class="progress-bar bg-success progress-bar-striped progress-bar-animated" style="width: {{ pedido.porcentaje_avance_kanban }}%;"></div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Columna Izquierda: Explosión de Materiales (BOM) y Descuento Automático -->
+    <div class="col-lg-8">
+        <div class="da-card p-4 mb-4">
+            <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+                <div>
+                    <h5 class="fw-bold mb-0">
+                        <i class="bi bi-boxes text-danger me-1"></i> Explosión de Lista de Materiales (BOM - Bill of Materials)
+                    </h5>
+                    <small class="text-muted">
+                        Receta Base: <strong>{{ pedido.producto_base.nombre }}</strong> (Base {{ pedido.producto_base.porciones_base }} porc.)
+                        escalada a <strong>{{ pedido.porciones_solicitadas }} porciones</strong> (Factor <code>{{ pedido.factor_escala_porciones }}x</code>).
+                    </small>
+                </div>
+
+                <div>
+                    {% if pedido.insumos_descontados %}
+                    <span class="badge bg-success fs-6 px-3 py-2">
+                        <i class="bi bi-check2-circle me-1"></i> Insumos BOM Descontados ({{ pedido.fecha_descuento_bom|date:"d/m H:i" }})
+                    </span>
+                    {% else %}
+                    <form method="post" class="d-inline">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="descontar_bom">
+                        <button type="submit" class="btn btn-dulce btn-sm px-3" {% if not es_factible_bom %}disabled{% endif %}>
+                            <i class="bi bi-box-arrow-up-right me-1"></i> Ejecutar Descuento Automático de Inventario BOM
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if not es_factible_bom and not pedido.insumos_descontados %}
+            <div class="alert alert-danger small">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                <strong>Atención Bodega:</strong> Existen {{ faltantes_bom|length }} insumo(s) con stock insuficiente para iniciar la producción de este pedido.
+                <a href="{% url 'inventario_bom' %}" class="fw-bold text-danger ms-1">Ir a Reabastecer Bodega →</a>
+            </div>
+            {% endif %}
+
+            <div class="table-responsive">
+                <table class="table table-hover align-middle small mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>SKU / Insumo</th>
+                            <th>Etapa / Uso en Receta</th>
+                            <th>Cant. Requerida (c/Merma)</th>
+                            <th>Stock Actual Bodega</th>
+                            <th>Costo Subtotal</th>
+                            <th>Estado Stock</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in explosion_bom %}
+                        <tr>
+                            <td>
+                                <div class="fw-bold">{{ item.nombre_insumo }}</div>
+                                <small class="text-muted">{{ item.codigo_sku }}</small>
+                            </td>
+                            <td>{{ item.origen_uso }}</td>
+                            <td class="fw-bold text-dark">{{ item.cantidad_requerida }} {{ item.unidad_medida }}</td>
+                            <td>{{ item.stock_disponible }} {{ item.unidad_medida }}</td>
+                            <td>${{ item.costo_subtotal|floatformat:0|intcomma }}</td>
+                            <td>
+                                {% if pedido.insumos_descontados %}
+                                <span class="badge bg-success-subtle text-success">✔ Rebajado de Kardex</span>
+                                {% elif item.stock_suficiente %}
+                                <span class="badge bg-primary-subtle text-primary">✔ Stock Disponible</span>
+                                {% else %}
+                                <span class="badge bg-danger">Déficit: {{ item.deficit }} {{ item.unidad_medida }}</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Agregar Insumo Extra de Personalización -->
+            {% if not pedido.insumos_descontados %}
+            <div class="border-top mt-3 pt-3">
+                <form method="post" class="row g-2 align-items-end">
+                    {% csrf_token %}
+                    <input type="hidden" name="accion" value="agregar_extra">
+                    <div class="col-md-5">
+                        <label class="form-label small fw-bold mb-1">Añadir Ingrediente Extra Personalizado</label>
+                        {{ extra_form.insumo }}
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold mb-1">Cantidad</label>
+                        {{ extra_form.cantidad_extra }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold mb-1">Motivo / Decoración</label>
+                        {{ extra_form.motivo }}
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-outline-dark btn-sm w-100">
+                            <i class="bi bi-plus-lg"></i> Añadir
+                        </button>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Especificaciones Técnicas y Logística de Entrega -->
+        <div class="da-card p-4">
+            <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
+                <i class="bi bi-card-checklist me-1"></i> Especificaciones de Cocina y Confirmación de Despacho
+            </h6>
+            <div class="row g-3 small">
+                <div class="col-md-4">
+                    <span class="text-muted d-block">Sabor Bizcocho:</span>
+                    <strong>{{ pedido.sabor_bizcocho }}</strong>
+                </div>
+                <div class="col-md-4">
+                    <span class="text-muted d-block">Relleno Principal:</span>
+                    <strong>{{ pedido.relleno_principal }}</strong>
+                </div>
+                <div class="col-md-4">
+                    <span class="text-muted d-block">Cobertura / Estilo:</span>
+                    <strong>{{ pedido.cobertura_diseno }}</strong>
+                </div>
+                <div class="col-md-6">
+                    <span class="text-muted d-block">Dedicatoria:</span>
+                    <strong>{{ pedido.dedicatoria_texto|default:"Sin dedicatoria" }}</strong>
+                </div>
+                <div class="col-md-6">
+                    <span class="text-muted d-block">Restricciones / Alergias Alimentarias:</span>
+                    <strong class="text-danger">{{ pedido.alergias_considerar|default:"Ninguna declarada" }}</strong>
+                </div>
+                <div class="col-12">
+                    <span class="text-muted d-block">Instrucciones de Diseño:</span>
+                    <div class="p-2 bg-light rounded border mt-1">{{ pedido.descripcion_diseno }}</div>
+                </div>
+            </div>
+
+            {% if despacho_asociado %}
+            <div class="mt-4 p-3 rounded-3 border bg-light">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <h6 class="fw-bold mb-0 text-dark">
+                        <i class="bi bi-truck me-1 text-primary"></i> Estado de Despacho: {{ despacho_asociado.get_estado_entrega_display }}
+                    </h6>
+                    <a href="{% url 'confirmar_entrega' despacho_asociado.pk %}" class="btn btn-sm btn-primary">
+                        <i class="bi bi-pen me-1"></i> Ver / Firmar Acta de Entrega
+                    </a>
+                </div>
+                <div class="small text-muted">
+                    Ruta: <strong>{{ despacho_asociado.ruta.codigo_ruta }}</strong> ({{ despacho_asociado.ruta.nombre_ruta }}) ·
+                    Dirección: {{ despacho_asociado.direccion_destino }}, {{ despacho_asociado.comuna_destino }}
+                </div>
+                {% if despacho_asociado.firma_digital_base64 %}
+                <div class="mt-2 pt-2 border-top d-flex align-items-center gap-3">
+                    <div>
+                        <div class="small fw-bold text-success">✔ Recepción Confirmada con Firma Digital</div>
+                        <small class="text-muted">Recibido por: {{ despacho_asociado.nombre_receptor }} ({{ despacho_asociado.rut_receptor }}) el {{ despacho_asociado.fecha_hora_confirmacion|date:"d/m/Y H:i" }}</small>
+                    </div>
+                    <img src="{{ despacho_asociado.firma_digital_base64 }}" alt="Firma Digital" class="border bg-white rounded p-1" style="height: 60px;">
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Columna Derecha: Resumen Financiero y Bitácora Kanban -->
+    <div class="col-lg-4">
+        <div class="da-card p-4 mb-4">
+            <h6 class="fw-bold border-bottom pb-2 mb-3">
+                <i class="bi bi-receipt text-danger me-1"></i> Resumen Financiero de Cotización
+            </h6>
+            <div class="d-flex justify-content-between small mb-2">
+                <span class="text-muted">Costo Directo Insumos BOM:</span>
+                <strong>${{ pedido.costo_insumos_estimado|floatformat:0|intcomma }}</strong>
+            </div>
+            <div class="d-flex justify-content-between small mb-2">
+                <span class="text-muted">Recargo Complejidad & Extras:</span>
+                <strong>${{ pedido.recargo_diseno|floatformat:0|intcomma }}</strong>
+            </div>
+            <div class="d-flex justify-content-between small mb-2">
+                <span class="text-muted">Despacho Refrigerado:</span>
+                <strong>${{ pedido.costo_despacho|floatformat:0|intcomma }}</strong>
+            </div>
+            <hr>
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="fw-bold">Total Cotizado:</span>
+                <span class="fs-4 fw-bold text-success">${{ pedido.precio_total|floatformat:0|intcomma }}</span>
+            </div>
+            <div class="d-flex justify-content-between small mb-1">
+                <span class="text-muted">Abono Pagado:</span>
+                <strong class="text-primary">${{ pedido.abono_pagado|floatformat:0|intcomma }}</strong>
+            </div>
+            <div class="d-flex justify-content-between small">
+                <span class="text-muted">Saldo Contra Entrega:</span>
+                <strong class="text-danger">${{ pedido.saldo_pendiente|floatformat:0|intcomma }}</strong>
+            </div>
+        </div>
+
+        <div class="da-card p-4">
+            <h6 class="fw-bold border-bottom pb-2 mb-3">
+                <i class="bi bi-clock-history text-danger me-1"></i> Historial de Trazabilidad Kanban
+            </h6>
+            <ul class="list-group list-group-flush small">
+                {% for h in pedido.historial_kanban.all %}
+                <li class="list-group-item px-0 py-2">
+                    <div class="d-flex justify-content-between">
+                        <span class="badge bg-dark">{{ h.get_estado_nuevo_display }}</span>
+                        <small class="text-muted">{{ h.fecha_cambio|date:"d/m H:i" }}</small>
+                    </div>
+                    <div class="mt-1 text-secondary">{{ h.comentario }}</div>
+                    <small class="text-muted">Responsable: {{ h.usuario.username|default:"Sistema" }}</small>
+                </li>
+                {% empty %}
+                <li class="list-group-item px-0 text-muted">Sin movimientos registrados aún.</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+</div>
+{% endblock %}

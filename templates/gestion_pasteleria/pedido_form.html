@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}{{ titulo }} · Dulce Arte{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="fw-bold mb-0">{{ titulo }}</h4>
+        <p class="text-muted small mb-0">
+            Personaliza ingredientes, diseño y porciones. El motor DRF calcula en tiempo real la Lista de Materiales (BOM) y factibilidad de bodega.
+        </p>
+    </div>
+    <a href="{% url 'pedidos_list' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left"></i> Volver al Listado
+    </a>
+</div>
+
+<div class="row g-4">
+    <!-- Formulario de Cotización y Pedido Personalizado -->
+    <div class="col-lg-7">
+        <div class="da-card p-4">
+            <form method="post" enctype="multipart/form-data" id="pedidoForm">
+                {% csrf_token %}
+
+                {% if form.errors %}
+                <div class="alert alert-danger small">
+                    <strong>Por favor corrige los siguientes errores:</strong>
+                    {{ form.errors }}
+                </div>
+                {% endif %}
+
+                <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
+                    <i class="bi bi-person-badge me-1"></i> 1. Cliente y Receta Base (BOM)
+                </h6>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Cliente *</label>
+                        {{ form.cliente }}
+                        <div class="form-text">
+                            ¿Cliente nuevo? <a href="{% url 'clientes_list' %}" target="_blank">Registrar en Directorio</a>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Receta / Producto Base (Catálogo BOM) *</label>
+                        {{ form.producto_base }}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Porciones Solicitadas *</label>
+                        {{ form.porciones_solicitadas }}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Complejidad Artística *</label>
+                        {{ form.nivel_complejidad }}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Maestro Pastelero Asignado</label>
+                        {{ form.pastelero_asignado }}
+                    </div>
+                </div>
+
+                <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
+                    <i class="bi bi-palette2 me-1"></i> 2. Especificaciones de Personalización y Diseño
+                </h6>
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Sabor de Bizcocho / Masa *</label>
+                        {{ form.sabor_bizcocho }}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Relleno Principal *</label>
+                        {{ form.relleno_principal }}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Cobertura y Decoración *</label>
+                        {{ form.cobertura_diseno }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Dedicatoria en Placa de Chocolate</label>
+                        {{ form.dedicatoria_texto }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Restricciones / Alergias Alimentarias</label>
+                        {{ form.alergias_considerar }}
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label small fw-bold">Descripción Detallada del Diseño Artístico *</label>
+                        {{ form.descripcion_diseno }}
+                    </div>
+                    <div class="col-md-12">
+                        <label class="form-label small fw-bold">Imagen o Boceto de Referencia (Opcional)</label>
+                        {{ form.imagen_referencia }}
+                    </div>
+                </div>
+
+                {% if not pedido %}
+                <div class="p-3 rounded-3 bg-light border mb-3">
+                    <div class="small fw-bold text-dark mb-2">
+                        <i class="bi bi-plus-square-dotted text-danger me-1"></i>
+                        Agregar Ingrediente Extra de Personalización al BOM (Opcional)
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-5">
+                            <select name="extra_insumo_id" class="form-select form-select-sm">
+                                <option value="">-- Seleccionar Insumo Extra --</option>
+                                {% for ins in insumos_disponibles %}
+                                <option value="{{ ins.id }}">{{ ins.nombre }} (Disp: {{ ins.stock_actual }} {{ ins.unidad_medida }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <input type="number" step="0.001" name="extra_cantidad" class="form-control form-control-sm" placeholder="Cant. (ej: 0.500)">
+                        </div>
+                        <div class="col-md-4">
+                            <input type="text" name="extra_motivo" class="form-control form-control-sm" placeholder="Ej: Frambuesas extra decoración">
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
+                    <i class="bi bi-truck me-1"></i> 3. Planificación de Entrega y Condiciones Comerciales
+                </h6>
+                <div class="row g-3 mb-4">
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Fecha y Hora de Entrega *</label>
+                        {{ form.fecha_entrega_comprometida }}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Modalidad de Entrega *</label>
+                        {{ form.modalidad_entrega }}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Prioridad en Taller</label>
+                        {{ form.prioridad }}
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label small fw-bold">Dirección Exacta de Entrega *</label>
+                        {{ form.direccion_entrega }}
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold">Comuna *</label>
+                        {{ form.comuna_entrega }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Estado Comercial Inicial</label>
+                        {{ form.estado_comercial }}
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Abono Pagado (CLP)</label>
+                        {{ form.abono_pagado }}
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2">
+                    <a href="{% url 'pedidos_list' %}" class="btn btn-outline-secondary">Cancelar</a>
+                    <button type="submit" class="btn btn-dulce px-4">
+                        <i class="bi bi-check2-circle me-1"></i> Guardar Cotización y Pedido
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Simulador en Vivo de Cotización y Factibilidad BOM (Consume DRF API) -->
+    <div class="col-lg-5">
+        <div class="da-card p-4 sticky-top" style="top: 76px;">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="fw-bold mb-0">
+                    <i class="bi bi-calculator-fill text-danger me-1"></i> Simulador de Cotización & Explosión BOM
+                </h6>
+                <span class="badge bg-dark">API DRF Live</span>
+            </div>
+            <p class="text-muted small mb-3">
+                Cálculo automático conectado a <code>POST /api/v1/pedidos/simular_cotizacion/</code>.
+            </p>
+
+            <div id="simuladorResultado">
+                <div class="p-3 rounded-3 bg-light border mb-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">Escala sobre Receta Base:</span>
+                        <strong id="simFactor">1.000x</strong>
+                    </div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">Costo Directo Insumos (BOM):</span>
+                        <strong id="simCostoBom">$0</strong>
+                    </div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">Precio Base Proporcional:</span>
+                        <strong id="simPrecioProp">$0</strong>
+                    </div>
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="text-muted">Recargo Complejidad Artística:</span>
+                        <strong id="simRecargo">$0</strong>
+                    </div>
+                    <div class="d-flex justify-content-between small mb-2">
+                        <span class="text-muted">Logística Despacho Refrigerado:</span>
+                        <strong id="simDespacho">$0</strong>
+                    </div>
+                    <hr class="my-2">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="fw-bold text-dark">Precio Total Sugerido:</span>
+                        <span class="fs-4 fw-bold text-success" id="simTotal">$0</span>
+                    </div>
+                    <div class="d-flex justify-content-between small text-muted mt-1">
+                        <span>Abono mínimo requerido (50%):</span>
+                        <strong id="simAbono">$0</strong>
+                    </div>
+                </div>
+
+                <div id="simAlertaStock" class="alert alert-success py-2 small mb-3">
+                    <i class="bi bi-check-circle-fill me-1"></i> Verificando disponibilidad de insumos en bodega...
+                </div>
+
+                <h6 class="small fw-bold text-secondary text-uppercase mb-2">
+                    Insumos Requeridos por Lista de Materiales (BOM):
+                </h6>
+                <div class="table-responsive" style="max-height: 280px;">
+                    <table class="table table-sm align-middle small mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Insumo</th>
+                                <th>Requerido</th>
+                                <th>En Bodega</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="simTablaBom">
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-3">Selecciona un producto base para simular su BOM.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const prodSelect = document.getElementById('id_producto_base');
+    const porcInput = document.getElementById('id_porciones_solicitadas');
+    const compSelect = document.getElementById('id_nivel_complejidad');
+    const modSelect = document.getElementById('id_modalidad_entrega');
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    const fmtCLP = (num) => '$' + Number(num || 0).toLocaleString('es-CL');
+
+    async function actualizarSimulacion() {
+        const productoId = prodSelect.value;
+        if (!productoId) return;
+
+        const payload = {
+            producto_base_id: productoId,
+            porciones_solicitadas: porcInput.value || 15,
+            nivel_complejidad: compSelect.value || 'PERSONALIZADO_MEDIO',
+            modalidad_entrega: modSelect.value || 'DESPACHO_DOMICILIO'
+        };
+
+        try {
+            const resp = await fetch('/api/v1/pedidos/simular_cotizacion/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify(payload)
+            });
+            if (!resp.ok) return;
+            const data = await resp.json();
+
+            document.getElementById('simFactor').textContent = data.factor_escala + 'x (' + data.porciones_solicitadas + ' porc.)';
+            document.getElementById('simCostoBom').textContent = fmtCLP(data.costo_bom_estimado);
+            document.getElementById('simPrecioProp').textContent = fmtCLP(data.precio_base_proporcional);
+            document.getElementById('simRecargo').textContent = fmtCLP(data.recargo_complejidad);
+            document.getElementById('simDespacho').textContent = fmtCLP(data.costo_despacho);
+            document.getElementById('simTotal').textContent = fmtCLP(data.precio_total_cotizado);
+            document.getElementById('simAbono').textContent = fmtCLP(data.abono_minimo_50pct);
+
+            const alerta = document.getElementById('simAlertaStock');
+            if (data.stock_factible) {
+                alerta.className = 'alert alert-success py-2 small mb-3';
+                alerta.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i> <strong>Factibilidad BOM OK:</strong> Bodega cuenta con stock suficiente para todos los insumos.';
+            } else {
+                alerta.className = 'alert alert-danger py-2 small mb-3';
+                alerta.innerHTML = '<i class="bi bi-exclamation-octagon-fill me-1"></i> <strong>Alerta de Stock BOM:</strong> Existen insumos con stock insuficiente en bodega.';
+            }
+
+            const tbody = document.getElementById('simTablaBom');
+            tbody.innerHTML = '';
+            data.desglose_bom.forEach(item => {
+                const badge = item.suficiente
+                    ? '<span class="badge bg-success-subtle text-success">OK</span>'
+                    : '<span class="badge bg-danger">Falta Stock</span>';
+                tbody.innerHTML += `
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">${item.insumo}</div>
+                            <small class="text-muted">${item.etapa}</small>
+                        </td>
+                        <td class="fw-bold">${item.cantidad_requerida} ${item.unidad}</td>
+                        <td>${item.stock_disponible} ${item.unidad}</td>
+                        <td>${badge}</td>
+                    </tr>
+                `;
+            });
+        } catch (err) {
+            console.error('Error simulando cotización:', err);
+        }
+    }
+
+    [prodSelect, porcInput, compSelect, modSelect].forEach(el => {
+        if (el) el.addEventListener('change', actualizarSimulacion);
+        if (el) el.addEventListener('keyup', actualizarSimulacion);
+    });
+
+    if (prodSelect && prodSelect.value) {
+        actualizarSimulacion();
+    } else if (prodSelect && prodSelect.options.length > 1) {
+        prodSelect.selectedIndex = 1;
+        actualizarSimulacion();
+    }
+});
+</script>
+{% endblock %}

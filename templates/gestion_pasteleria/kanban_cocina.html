@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Tablero Kanban Taller de Cocina · Dulce Arte{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+        <h4 class="fw-bold mb-0">
+            <i class="bi bi-kanban text-danger me-1"></i> 2. Tablero Kanban Digital del Taller de Cocina
+        </h4>
+        <p class="text-muted small mb-0">
+            Arrastra y suelta las tarjetas entre columnas (API DRF) o usa los botones de transición.
+            <strong>Regla de Negocio:</strong> Al pasar a <em>"En Preparación"</em> se descuentan automáticamente los insumos de la Lista de Materiales (BOM).
+        </p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'pedido_crear' %}" class="btn btn-dulce btn-sm">
+            <i class="bi bi-plus-circle me-1"></i> Nuevo Pedido
+        </a>
+        <a href="{% url 'inventario_bom' %}" class="btn btn-outline-dark btn-sm">
+            <i class="bi bi-boxes me-1"></i> Ver Kardex BOM
+        </a>
+    </div>
+</div>
+
+<!-- Alerta Dinámica de Respuesta API Drag & Drop -->
+<div id="kanbanApiToast" class="alert alert-success d-none shadow-sm small py-2 mb-3"></div>
+
+<!-- Tablero Kanban de 5 Columnas -->
+<div class="kanban-board">
+    {% for col in columnas %}
+    <div class="kanban-column" data-estado="{{ col.codigo }}" ondragover="allowDrop(event)" ondragleave="leaveDrop(event)" ondrop="dropCard(event, '{{ col.codigo }}')">
+        <div class="kanban-column-header d-flex justify-content-between align-items-center">
+            <div>
+                <div class="fw-bold text-dark small">
+                    <i class="bi {{ col.icono }} text-danger me-1"></i> {{ col.titulo }}
+                </div>
+                <small class="text-muted" style="font-size: 0.72rem;">{{ col.subtitulo }}</small>
+            </div>
+            <span class="badge rounded-pill bg-dark">{{ col.pedidos|length }}</span>
+        </div>
+
+        <div class="kanban-cards-container">
+            {% for p in col.pedidos %}
+            <div class="kanban-card prioridad-{{ p.prioridad }}" draggable="true" ondragstart="dragCard(event, '{{ p.pk }}', '{{ p.codigo_pedido }}')" id="card-pedido-{{ p.pk }}">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <a href="{% url 'pedido_detalle' p.pk %}" class="fw-bold text-danger text-decoration-none small">
+                        {{ p.codigo_pedido }}
+                    </a>
+                    <span class="badge {% if p.prioridad == 'URGENTE' %}bg-danger{% elif p.prioridad == 'ALTA' %}bg-warning text-dark{% else %}bg-light text-secondary border{% endif %}" style="font-size: 0.68rem;">
+                        {{ p.get_prioridad_display }}
+                    </span>
+                </div>
+
+                <div class="fw-bold text-dark" style="font-size: 0.86rem;">{{ p.producto_base.nombre }}</div>
+                <div class="small text-muted mb-1">
+                    👤 {{ p.cliente.nombre_completo }} · <strong>{{ p.porciones_solicitadas }} porc.</strong>
+                </div>
+
+                <div class="p-2 rounded bg-light border mb-2" style="font-size: 0.75rem;">
+                    <div><strong>Masa:</strong> {{ p.sabor_bizcocho|truncatechars:34 }}</div>
+                    <div><strong>Relleno:</strong> {{ p.relleno_principal|truncatechars:34 }}</div>
+                    {% if p.alergias_considerar %}
+                    <div class="text-danger fw-bold mt-1">⚠️ Alergia: {{ p.alergias_considerar }}</div>
+                    {% endif %}
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-2" style="font-size: 0.73rem;">
+                    <span class="text-muted">
+                        <i class="bi bi-clock me-1"></i>{{ p.fecha_entrega_comprometida|date:"d/m H:i" }}
+                    </span>
+                    {% if p.insumos_descontados %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">✔ BOM OK</span>
+                    {% else %}
+                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">⏳ BOM Pend.</span>
+                    {% endif %}
+                </div>
+
+                <!-- Controles Rápidos de Transición Kanban -->
+                <form method="post" class="d-flex gap-1 align-items-center border-top pt-2">
+                    {% csrf_token %}
+                    <input type="hidden" name="pedido_id" value="{{ p.pk }}">
+                    <select name="nuevo_estado" class="form-select form-select-sm py-0" style="font-size: 0.74rem; height: 28px;">
+                        <option value="RECIBIDO" {% if p.estado_kanban == 'RECIBIDO' %}selected{% endif %}>1. Recibido</option>
+                        <option value="EN_PREPARACION" {% if p.estado_kanban == 'EN_PREPARACION' %}selected{% endif %}>2. En Preparación (BOM)</option>
+                        <option value="HORNEADO_DECORADO" {% if p.estado_kanban == 'HORNEADO_DECORADO' %}selected{% endif %}>3. Horneado/Decorado</option>
+                        <option value="CONTROL_CALIDAD" {% if p.estado_kanban == 'CONTROL_CALIDAD' %}selected{% endif %}>4. Control de Calidad</option>
+                        <option value="LISTO" {% if p.estado_kanban == 'LISTO' %}selected{% endif %}>5. Listo</option>
+                    </select>
+                    <button type="submit" class="btn btn-dark btn-sm py-0 px-2" style="height: 28px; font-size: 0.74rem;" title="Aplicar cambio de etapa">
+                        Mover
+                    </button>
+                </form>
+            </div>
+            {% empty %}
+            <div class="text-center text-muted small py-5">
+                <i class="bi bi-inbox fs-4 d-block mb-1 opacity-50"></i>
+                Sin pedidos en esta etapa
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Bitácora Reciente del Taller de Cocina -->
+<div class="da-card p-3 mt-3">
+    <h6 class="fw-bold mb-2"><i class="bi bi-journal-check text-danger me-1"></i> Bitácora en Vivo de Transiciones en Cocina y Descuentos BOM</h6>
+    <div class="table-responsive">
+        <table class="table table-sm align-middle small mb-0">
+            <thead class="table-light">
+                <tr>
+                    <th>Fecha / Hora</th>
+                    <th>Pedido</th>
+                    <th>Transición</th>
+                    <th>Responsable</th>
+                    <th>Detalle Técnico / Trazabilidad BOM</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for h in historial_reciente %}
+                <tr>
+                    <td>{{ h.fecha_cambio|date:"d/m/Y H:i:s" }}</td>
+                    <td class="fw-bold text-danger">{{ h.pedido.codigo_pedido }}</td>
+                    <td>
+                        <span class="badge bg-light text-dark border">{{ h.estado_anterior }}</span>
+                        <i class="bi bi-arrow-right mx-1"></i>
+                        <span class="badge bg-dark">{{ h.get_estado_nuevo_display }}</span>
+                    </td>
+                    <td>{{ h.usuario.username|default:"Sistema" }}</td>
+                    <td>{{ h.comentario }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let draggedPedidoId = null;
+let draggedPedidoCodigo = null;
+const csrfToken = '{{ csrf_token }}';
+
+function dragCard(ev, pedidoId, codigo) {
+    draggedPedidoId = pedidoId;
+    draggedPedidoCodigo = codigo;
+    ev.dataTransfer.setData('text/plain', pedidoId);
+}
+
+function allowDrop(ev) {
+    ev.preventDefault();
+    ev.currentTarget.classList.add('drag-over');
+}
+
+function leaveDrop(ev) {
+    ev.currentTarget.classList.remove('drag-over');
+}
+
+async function dropCard(ev, nuevoEstado) {
+    ev.preventDefault();
+    ev.currentTarget.classList.remove('drag-over');
+    if (!draggedPedidoId) return;
+
+    const toast = document.getElementById('kanbanApiToast');
+    toast.className = 'alert alert-info shadow-sm small py-2 mb-3';
+    toast.textContent = `Procesando transición Kanban para ${draggedPedidoCodigo} vía API DRF...`;
+
+    try {
+        const resp = await fetch(`/api/v1/pedidos/${draggedPedidoId}/mover_kanban/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                nuevo_estado: nuevoEstado,
+                comentario: 'Movido mediante Drag & Drop en Tablero Kanban Digital.'
+            })
+        });
+        const data = await resp.json();
+        if (resp.ok && data.exito) {
+            window.location.reload();
+        } else {
+            toast.className = 'alert alert-danger shadow-sm small py-2 mb-3';
+            toast.innerHTML = `<i class="bi bi-exclamation-octagon-fill me-1"></i> <strong>Error de validación BOM:</strong> ${data.error || 'No se pudo cambiar de estado.'}`;
+        }
+    } catch (err) {
+        toast.className = 'alert alert-danger shadow-sm small py-2 mb-3';
+        toast.textContent = 'Error de red al conectar con el servidor.';
+    }
+}
+</script>
+{% endblock %}

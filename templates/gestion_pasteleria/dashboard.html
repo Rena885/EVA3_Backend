@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% load humanize %}
+
+{% block title %}Dashboard Operativo End-to-End · Dulce Arte{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+    <div>
+        <h3 class="fw-bold mb-0">Centro de Control y Trazabilidad · Dulce Arte</h3>
+        <p class="text-muted small mb-0">
+            Monitoreo sincronizado entre Cotizaciones de Venta, Taller de Cocina (Kanban), Bodega (BOM) y Rutas de Despacho.
+        </p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'pedido_crear' %}" class="btn btn-dulce btn-sm px-3">
+            <i class="bi bi-plus-circle me-1"></i> Nueva Cotización Personalizada
+        </a>
+        <a href="{% url 'kanban_cocina' %}" class="btn btn-warning btn-sm fw-semibold px-3">
+            <i class="bi bi-kanban me-1"></i> Ir al Tablero Kanban
+        </a>
+        <a href="{% url 'rutas_despacho' %}" class="btn btn-outline-dark btn-sm px-3">
+            <i class="bi bi-pen me-1"></i> Despachos y Firma Digital
+        </a>
+    </div>
+</div>
+
+<!-- Tarjetas KPI Principales -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <div class="da-kpi-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="text-muted small fw-semibold text-uppercase">Pedidos Activos</div>
+                    <h2 class="fw-bold mb-1 text-dark">{{ pedidos_activos_count }} <small class="fs-6 text-muted fw-normal">/ {{ total_pedidos }}</small></h2>
+                    <span class="badge bg-danger-subtle text-danger">Flujo End-to-End</span>
+                </div>
+                <div class="rounded-3 p-2 bg-danger-subtle text-danger fs-4">
+                    <i class="bi bi-cake2-fill"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="da-kpi-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="text-muted small fw-semibold text-uppercase">Ventas Cotizadas</div>
+                    <h2 class="fw-bold mb-1 text-success">${{ ingresos_totales|floatformat:0|intcomma }}</h2>
+                    <span class="badge bg-success-subtle text-success">{{ total_clientes }} Clientes Registrados</span>
+                </div>
+                <div class="rounded-3 p-2 bg-success-subtle text-success fs-4">
+                    <i class="bi bi-cash-stack"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="da-kpi-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="text-muted small fw-semibold text-uppercase">Alertas Stock BOM</div>
+                    <h2 class="fw-bold mb-1 {% if insumos_criticos %}text-danger{% else %}text-primary{% endif %}">
+                        {{ insumos_criticos|length }}
+                    </h2>
+                    <span class="badge {% if insumos_criticos %}bg-danger text-white{% else %}bg-primary-subtle text-primary{% endif %}">
+                        {% if insumos_criticos %}Reposición Requerida{% else %}Bodega Saludable{% endif %}
+                    </span>
+                </div>
+                <div class="rounded-3 p-2 bg-warning-subtle text-warning-emphasis fs-4">
+                    <i class="bi bi-box-seam-fill"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-sm-6 col-xl-3">
+        <div class="da-kpi-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <div class="text-muted small fw-semibold text-uppercase">Rutas y Entregas</div>
+                    <h2 class="fw-bold mb-1 text-info-emphasis">{{ KPI_ENTREGAS_PENDIENTES }}</h2>
+                    <span class="badge bg-info-subtle text-info-emphasis">Paradas en Despacho</span>
+                </div>
+                <div class="rounded-3 p-2 bg-info-subtle text-info-emphasis fs-4">
+                    <i class="bi bi-truck-front-fill"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Barra Visual del Estado del Taller Kanban -->
+<div class="da-card p-3 mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold mb-0"><i class="bi bi-kanban text-danger me-1"></i> Pulso del Taller de Cocina (Flujo Kanban en Tiempo Real)</h6>
+        <a href="{% url 'kanban_cocina' %}" class="small text-decoration-none fw-semibold">Abrir Tablero Interactivo →</a>
+    </div>
+    <div class="row g-2">
+        {% for etapa in resumen_kanban %}
+        <div class="col">
+            <div class="p-3 rounded-3 border bg-light text-center">
+                <div class="small text-muted fw-semibold">{{ etapa.etiqueta }}</div>
+                <div class="fs-3 fw-bold text-dark">{{ etapa.cantidad }}</div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="row g-4">
+    <!-- Próximos Pedidos Personalizados y Estado BOM -->
+    <div class="col-lg-7">
+        <div class="da-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0"><i class="bi bi-calendar2-check text-danger me-1"></i> Pedidos Personalizados Próximos a Entregar</h6>
+                <a href="{% url 'pedidos_list' %}" class="btn btn-outline-secondary btn-sm">Ver Todos</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle small mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Código</th>
+                            <th>Cliente / Receta Base</th>
+                            <th>Entrega</th>
+                            <th>Etapa Kanban</th>
+                            <th>BOM</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in pedidos_proximos %}
+                        <tr>
+                            <td class="fw-bold">
+                                <a href="{% url 'pedido_detalle' p.pk %}" class="text-decoration-none text-danger">{{ p.codigo_pedido }}</a>
+                            </td>
+                            <td>
+                                <div class="fw-semibold">{{ p.cliente.nombre_completo }}</div>
+                                <small class="text-muted">{{ p.producto_base.nombre }} ({{ p.porciones_solicitadas }} porc.)</small>
+                            </td>
+                            <td>
+                                <div>{{ p.fecha_entrega_comprometida|date:"d/m/Y H:i" }}</div>
+                                {% if p.en_riesgo_atraso %}
+                                <span class="badge bg-danger">⚡ Urgente</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge bg-secondary-subtle text-dark border">{{ p.get_estado_kanban_display }}</span>
+                            </td>
+                            <td>
+                                {% if p.insumos_descontados %}
+                                <span class="badge bg-success-subtle text-success">✔ Descontado</span>
+                                {% else %}
+                                <span class="badge bg-warning-subtle text-warning-emphasis">Pendiente</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <a href="{% url 'pedido_detalle' p.pk %}" class="btn btn-sm btn-outline-dark">Ficha BOM</a>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-3">No hay pedidos pendientes.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertas de Bodega BOM y Perecibles -->
+    <div class="col-lg-5">
+        <div class="da-card p-3 h-100">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h6 class="fw-bold mb-0"><i class="bi bi-exclamation-triangle-fill text-warning me-1"></i> Alertas de Bodega e Insumos Perecibles</h6>
+                <a href="{% url 'inventario_bom' %}" class="btn btn-outline-secondary btn-sm">Gestionar Bodega</a>
+            </div>
+
+            {% if insumos_criticos %}
+            <div class="mb-3">
+                <div class="small fw-bold text-danger mb-2">Stock Crítico (Bajo Punto de Reorden BOM):</div>
+                <ul class="list-group list-group-flush small">
+                    {% for ins in insumos_criticos %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <div>
+                            <span class="fw-semibold">{{ ins.nombre }}</span>
+                            <small class="text-muted d-block">SKU: {{ ins.codigo_sku }} · Mín: {{ ins.stock_minimo }} {{ ins.unidad_medida }}</small>
+                        </div>
+                        <span class="badge bg-danger rounded-pill">{{ ins.stock_actual }} {{ ins.unidad_medida }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% else %}
+            <div class="alert alert-success small py-2">
+                <i class="bi bi-check-circle-fill me-1"></i> Todos los insumos superan el stock mínimo crítico.
+            </div>
+            {% endif %}
+
+            <div class="border-top pt-3">
+                <div class="small fw-bold text-secondary mb-2">Últimos Descuentos Automáticos en Kardex (BOM):</div>
+                <ul class="list-group list-group-flush small">
+                    {% for mov in ultimos_movimientos|slice:":4" %}
+                    <li class="list-group-item px-0 py-2">
+                        <div class="d-flex justify-content-between">
+                            <strong>{{ mov.insumo.nombre }}</strong>
+                            <span class="{% if mov.tipo_movimiento == 'SALIDA_BOM_PEDIDO' %}text-danger{% else %}text-success{% endif %} fw-bold">
+                                {% if mov.tipo_movimiento == 'SALIDA_BOM_PEDIDO' %}-{% else %}+{% endif %}{{ mov.cantidad }} {{ mov.insumo.unidad_medida }}
+                            </span>
+                        </div>
+                        <small class="text-muted">{{ mov.motivo|truncatechars:68 }}</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
