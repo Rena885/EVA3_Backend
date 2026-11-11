@@ -33,4 +33,7 @@ urlpatterns = [
 
     # Centro de Administración Integral (Todo el Admin en la misma página web)
     path('administracion/', views.administracion_unificada_view, name='centro_admin'),
+
+    # Vista previa del Error 404 (Accesible directamente para pruebas en modo desarrollo)
+    path('404/', views.error_404_view, name='error_404'),
 ]

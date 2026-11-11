@@ -15,9 +15,11 @@
         </p>
     </div>
     <div class="d-flex gap-2">
+        {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'VENTAS' %}
         <a href="{% url 'pedido_crear' %}" class="btn btn-dulce btn-sm">
             <i class="bi bi-plus-circle me-1"></i> Nuevo Pedido
         </a>
+        {% endif %}
         <a href="{% url 'inventario_bom' %}" class="btn btn-outline-dark btn-sm">
             <i class="bi bi-boxes me-1"></i> Ver Kardex BOM
         </a>

@@ -44,7 +44,7 @@
     <div class="tab-pane fade show active" id="pane-insumos" role="tabpanel">
         <div class="row g-4">
             <!-- Tabla de Insumos con Reposición Rápida -->
-            <div class="col-lg-8">
+            <div class="{% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}col-lg-8{% else %}col-12{% endif %}">
                 <div class="da-card p-3">
                     <h6 class="fw-bold mb-3">Catálogo de Materias Primas e Insumos en Bodega</h6>
                     <div class="table-responsive">
@@ -56,8 +56,10 @@
                                     <th>Stock Actual / Mínimo</th>
                                     <th>Costo Unit.</th>
                                     <th>Vencimiento / Lote</th>
+                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
                                     <th>Ajuste Rápido Kardex</th>
                                     <th class="text-end">CRUD</th>
+                                    {% endif %}
                                 </tr>
                             </thead>
                             <tbody>
@@ -89,6 +91,7 @@
                                         {% endif %}
                                         <small class="d-block text-muted">{{ ins.lote_actual }}</small>
                                     </td>
+                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
                                     <td>
                                         <form method="post" class="d-flex gap-1">
                                             {% csrf_token %}
@@ -118,6 +121,7 @@
                                             </form>
                                         </div>
                                     </td>
+                                    {% endif %}
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -126,6 +130,7 @@
                 </div>
             </div>
 
+            {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
             <!-- Formulario Crear / Editar Insumo -->
             <div class="col-lg-4">
                 <div class="da-card p-4">
@@ -161,13 +166,14 @@
                     </form>
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 
     <!-- PESTAÑA 2: RECETAS BASE Y LISTA DE MATERIALES (BOM) -->
     <div class="tab-pane fade" id="pane-recetas" role="tabpanel">
         <div class="row g-4">
-            <div class="col-lg-8">
+            <div class="{% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}col-lg-8{% else %}col-12{% endif %}">
                 {% for prod in productos %}
                 <div class="da-card p-3 mb-3">
                     <div class="d-flex flex-wrap justify-content-between align-items-center border-bottom pb-2 mb-2">
@@ -193,7 +199,9 @@
                                     <th>Merma (%)</th>
                                     <th>Total a Descontar</th>
                                     <th>Costo Línea</th>
+                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
                                     <th class="text-end">Quitar</th>
+                                    {% endif %}
                                 </tr>
                             </thead>
                             <tbody>
@@ -205,6 +213,7 @@
                                     <td>{{ item.merma_tecnica_pct }}%</td>
                                     <td class="fw-bold text-primary">{{ item.cantidad_con_merma }} {{ item.insumo.unidad_medida }}</td>
                                     <td>${{ item.costo_linea|floatformat:0|intcomma }}</td>
+                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
                                     <td class="text-end">
                                         <form method="post" class="d-inline">
                                             {% csrf_token %}
@@ -215,6 +224,7 @@
                                             </button>
                                         </form>
                                     </td>
+                                    {% endif %}
                                 </tr>
                                 {% empty %}
                                 <tr>
@@ -228,6 +238,7 @@
                 {% endfor %}
             </div>
 
+            {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
             <!-- Formularios para Añadir Componente BOM o Nueva Receta -->
             <div class="col-lg-4">
                 <div class="da-card p-4 mb-3">
@@ -268,6 +279,7 @@
                     </form>
                 </div>
             </div>
+            {% endif %}
         </div>
     </div>
 

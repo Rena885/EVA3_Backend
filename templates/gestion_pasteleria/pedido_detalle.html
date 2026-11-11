@@ -16,7 +16,7 @@
         </p>
     </div>
     <div class="d-flex gap-2 flex-wrap">
-        {% if pedido.estado_comercial == 'COTIZACION' %}
+        {% if pedido.estado_comercial == 'COTIZACION' and ROL_USUARIO_ACTUAL == 'ADMIN' or pedido.estado_comercial == 'COTIZACION' and ROL_USUARIO_ACTUAL == 'VENTAS' %}
         <form method="post" class="d-inline">
             {% csrf_token %}
             <input type="hidden" name="accion" value="confirmar_cotizacion">
@@ -25,12 +25,16 @@
             </button>
         </form>
         {% endif %}
+        {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'COCINA' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
         <a href="{% url 'kanban_cocina' %}" class="btn btn-warning btn-sm fw-semibold">
             <i class="bi bi-kanban me-1"></i> Ver en Tablero Kanban
         </a>
+        {% endif %}
+        {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'VENTAS' %}
         <a href="{% url 'pedido_editar' pedido.pk %}" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-pencil me-1"></i> Editar
         </a>
+        {% endif %}
         <a href="/api/v1/pedidos/{{ pedido.pk }}/explosion_bom/" target="_blank" class="btn btn-outline-dark btn-sm">
             <i class="bi bi-braces me-1"></i> JSON BOM (API)
         </a>
@@ -127,7 +131,7 @@
             </div>
 
             <!-- Agregar Insumo Extra de Personalización -->
-            {% if not pedido.insumos_descontados %}
+            {% if not pedido.insumos_descontados and ROL_USUARIO_ACTUAL == 'ADMIN' or not pedido.insumos_descontados and ROL_USUARIO_ACTUAL == 'VENTAS' %}
             <div class="border-top mt-3 pt-3">
                 <form method="post" class="row g-2 align-items-end">
                     {% csrf_token %}
@@ -192,9 +196,11 @@
                     <h6 class="fw-bold mb-0 text-dark">
                         <i class="bi bi-truck me-1 text-primary"></i> Estado de Despacho: {{ despacho_asociado.get_estado_entrega_display }}
                     </h6>
+                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'REPARTIDOR' %}
                     <a href="{% url 'confirmar_entrega' despacho_asociado.pk %}" class="btn btn-sm btn-primary">
                         <i class="bi bi-pen me-1"></i> Ver / Firmar Acta de Entrega
                     </a>
+                    {% endif %}
                 </div>
                 <div class="small text-muted">
                     Ruta: <strong>{{ despacho_asociado.ruta.codigo_ruta }}</strong> ({{ despacho_asociado.ruta.nombre_ruta }}) ·

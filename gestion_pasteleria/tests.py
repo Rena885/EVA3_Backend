@@ -12,6 +12,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from .models import (
+    PerfilUsuario,
     Cliente,
     CategoriaInsumo,
     Insumo,
@@ -214,4 +215,41 @@ class DulceArteBusinessLogicTests(TestCase):
         for url in rutas_a_probar:
             resp = self.client.get(url)
             self.assertEqual(resp.status_code, 200, f"Fallo al cargar la ruta {url}")
+
+    def test_restriccion_panel_administracion_por_rol(self):
+        """
+        Verifica Criterio 4 de la Rúbrica (Seguridad y Permisos por Rol):
+        - El perfil BODEGA no debe visualizar la sección 'Administración' ni acceder a /administracion/.
+        - El perfil COCINA (Chef) no debe acceder a Despachos ni Firmas de Entrega (/logistica/rutas/).
+        - El perfil REPARTIDOR sí puede acceder a Despachos y Firmas de Entrega.
+        - ADMIN tiene acceso global.
+        """
+        self.client.force_login(self.user)
+        PerfilUsuario.objects.update_or_create(usuario=self.user, defaults={'rol': 'BODEGA'})
+
+        resp_dashboard_bodega = self.client.get('/')
+        self.assertEqual(resp_dashboard_bodega.status_code, 200)
+        self.assertNotContains(resp_dashboard_bodega, '<span>Panel admin</span>')
+        self.assertNotContains(resp_dashboard_bodega, '<span>Django Admin</span>')
+        self.assertNotContains(resp_dashboard_bodega, 'id="selectorRol"')
+
+        resp_admin_bodega = self.client.get('/administracion/')
+        self.assertEqual(resp_admin_bodega.status_code, 302)
+
+        # Chef (COCINA) no puede hacer entregas ni firmar despachos
+        PerfilUsuario.objects.update_or_create(usuario=self.user, defaults={'rol': 'COCINA'})
+        self.assertEqual(self.client.get('/logistica/rutas/').status_code, 302)
+
+        # Repartidor (REPARTIDOR) sí puede gestionar despachos, pero no entrar a Cocina Kanban
+        PerfilUsuario.objects.update_or_create(usuario=self.user, defaults={'rol': 'REPARTIDOR'})
+        self.assertEqual(self.client.get('/logistica/rutas/').status_code, 200)
+        self.assertEqual(self.client.get('/cocina/kanban/').status_code, 302)
+
+        # Administrador General (ADMIN) tiene acceso completo
+        PerfilUsuario.objects.update_or_create(usuario=self.user, defaults={'rol': 'ADMIN'})
+        resp_dashboard_admin = self.client.get('/')
+        self.assertContains(resp_dashboard_admin, '<span>Panel admin</span>')
+        self.assertContains(resp_dashboard_admin, '<span>Django Admin</span>')
+        self.assertEqual(self.client.get('/administracion/').status_code, 200)
+
 

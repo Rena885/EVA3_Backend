@@ -9,9 +9,11 @@
         <h4 class="fw-bold mb-0">1. Cotización y Registro de Pedidos Personalizados</h4>
         <p class="text-muted small mb-0">Gestión comercial de tortas a medida, cálculo automático por porciones/complejidad y explosión BOM.</p>
     </div>
+    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'VENTAS' %}
     <a href="{% url 'pedido_crear' %}" class="btn btn-dulce">
         <i class="bi bi-plus-lg me-1"></i> Nueva Cotización / Pedido Personalizado
     </a>
+    {% endif %}
 </div>
 
 <!-- Barra de Filtros y Búsqueda -->
@@ -110,12 +112,14 @@
                             <a href="{% url 'pedido_detalle' pedido.pk %}" class="btn btn-outline-primary" title="Ver Explosión BOM y Trazabilidad">
                                 <i class="bi bi-eye"></i> BOM
                             </a>
+                            {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'VENTAS' %}
                             <a href="{% url 'pedido_editar' pedido.pk %}" class="btn btn-outline-secondary" title="Editar Pedido">
                                 <i class="bi bi-pencil"></i>
                             </a>
                             <a href="{% url 'pedido_eliminar' pedido.pk %}" class="btn btn-outline-danger" title="Eliminar Pedido">
                                 <i class="bi bi-trash"></i>
                             </a>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>

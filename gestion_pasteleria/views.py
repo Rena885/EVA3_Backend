@@ -52,10 +52,10 @@ from .forms import (
 def obtener_rol_usuario(user) -> str:
     if not user.is_authenticated:
         return 'ANONIMO'
-    if user.is_superuser:
-        return 'ADMIN'
     if hasattr(user, 'perfil'):
         return user.perfil.rol
+    if user.is_superuser:
+        return 'ADMIN'
     return 'VENTAS'
 
 
@@ -125,6 +125,9 @@ def cambiar_rol_demo_view(request):
                 request,
                 f"Rol de sesión actualizado a: {roles_validos[nuevo_rol]}.",
             )
+            referer = request.META.get('HTTP_REFERER', '')
+            if nuevo_rol != 'ADMIN' and '/administracion' in referer:
+                return redirect('dashboard')
     return redirect(request.META.get('HTTP_REFERER', 'dashboard'))
 
 
@@ -195,7 +198,7 @@ def dashboard_view(request):
 # ==============================================================================
 # 3. FUNCIONALIDAD 1: COTIZACIÓN Y REGISTRO DE PEDIDOS PERSONALIZADOS
 # ==============================================================================
-@login_required
+@requiere_roles('ADMIN', 'VENTAS', 'COCINA', 'BODEGA')
 def pedidos_list_view(request):
     estado_kanban = request.GET.get('estado_kanban', '')
     estado_comercial = request.GET.get('estado_comercial', '')
@@ -229,7 +232,7 @@ def pedidos_list_view(request):
     return render(request, 'gestion_pasteleria/pedidos_list.html', context)
 
 
-@requiere_roles('ADMIN', 'VENTAS', 'COCINA')
+@requiere_roles('ADMIN', 'VENTAS')
 def pedido_crear_view(request):
     if request.method == 'POST':
         form = PedidoPersonalizadoForm(request.POST, request.FILES)
@@ -290,7 +293,7 @@ def pedido_crear_view(request):
     )
 
 
-@requiere_roles('ADMIN', 'VENTAS', 'COCINA')
+@requiere_roles('ADMIN', 'VENTAS')
 def pedido_editar_view(request, pk):
     pedido = get_object_or_404(PedidoPersonalizado, pk=pk)
     if request.method == 'POST':
@@ -321,7 +324,7 @@ def pedido_editar_view(request, pk):
     )
 
 
-@login_required
+@requiere_roles('ADMIN', 'VENTAS', 'COCINA', 'BODEGA')
 def pedido_detalle_view(request, pk):
     pedido = get_object_or_404(
         PedidoPersonalizado.objects.select_related(
@@ -331,9 +334,17 @@ def pedido_detalle_view(request, pk):
     )
     es_factible, faltantes, explosion_bom = pedido.verificar_disponibilidad_bom()
     extra_form = InsumoExtraPedidoForm()
+    rol_actual = obtener_rol_usuario(request.user)
 
     if request.method == 'POST':
         accion = request.POST.get('accion')
+        if accion in ('agregar_extra', 'eliminar_extra', 'confirmar_cotizacion') and rol_actual not in ('ADMIN', 'VENTAS'):
+            messages.warning(request, "Solo el perfil de Ventas o Administración puede modificar la cotización comercial.")
+            return redirect('pedido_detalle', pk=pedido.pk)
+        if accion == 'descontar_bom' and rol_actual not in ('ADMIN', 'BODEGA', 'COCINA'):
+            messages.warning(request, "Solo Bodega, Cocina o Administración pueden ejecutar el descuento BOM.")
+            return redirect('pedido_detalle', pk=pedido.pk)
+
         if accion == 'agregar_extra':
             extra_form = InsumoExtraPedidoForm(request.POST)
             if extra_form.is_valid():
@@ -418,7 +429,7 @@ def pedido_eliminar_view(request, pk):
 # ==============================================================================
 # CRUD COMPLETO DE CLIENTES
 # ==============================================================================
-@login_required
+@requiere_roles('ADMIN', 'VENTAS')
 def clientes_view(request):
     clientes = Cliente.objects.annotate(num_pedidos=Count('pedidos')).order_by('nombre_completo')
     editar_id = request.GET.get('editar')
@@ -462,7 +473,7 @@ def clientes_view(request):
 # ==============================================================================
 # 4. FUNCIONALIDAD 2: TABLERO KANBAN DIGITAL DEL TALLER DE COCINA
 # ==============================================================================
-@login_required
+@requiere_roles('ADMIN', 'COCINA', 'BODEGA')
 def kanban_cocina_view(request):
     """
     Tablero Kanban interactivo del Taller de Cocina con las 5 columnas requeridas:
@@ -561,7 +572,7 @@ def kanban_cocina_view(request):
 # ==============================================================================
 # 5. FUNCIONALIDAD 3: BODEGA DE INSUMOS Y LISTA DE MATERIALES (BOM)
 # ==============================================================================
-@login_required
+@requiere_roles('ADMIN', 'BODEGA', 'COCINA')
 def inventario_bom_view(request):
     """
     Centro integral de Bodega de Insumos, Recetas Base, Configuración de Lista de
@@ -575,6 +586,12 @@ def inventario_bom_view(request):
     bom_form = ItemBOMForm()
 
     if request.method == 'POST':
+        if obtener_rol_usuario(request.user) not in ('ADMIN', 'BODEGA'):
+            messages.warning(
+                request,
+                "Acceso restringido: Solo el Encargado de Bodega o Administración puede modificar insumos, stock o recetas BOM.",
+            )
+            return redirect('inventario_bom')
         accion = request.POST.get('accion')
 
         # 1. Crear o Editar Insumo
@@ -700,7 +717,7 @@ def inventario_bom_view(request):
 # ==============================================================================
 # 6. FUNCIONALIDAD 4: GESTIÓN DE RUTAS DE DESPACHO Y FIRMA DIGITAL / FOTO
 # ==============================================================================
-@login_required
+@requiere_roles('ADMIN', 'REPARTIDOR')
 def rutas_despacho_view(request):
     """
     Módulo de planificación de Rutas de Despacho, asignación de paradas
@@ -763,7 +780,7 @@ def rutas_despacho_view(request):
     )
 
 
-@login_required
+@requiere_roles('ADMIN', 'REPARTIDOR')
 def confirmar_entrega_view(request, pk):
     """
     Pantalla interactiva de Confirmación de Entrega con Lienzo de Firma Digital
@@ -814,7 +831,7 @@ def confirmar_entrega_view(request, pk):
 # ==============================================================================
 # 7. CENTRO DE ADMINISTRACIÓN INTEGRAL (TODO EN UNA MISMA PÁGINA WEB)
 # ==============================================================================
-@login_required
+@requiere_roles('ADMIN')
 def administracion_unificada_view(request):
     """
     Reúne toda la administración de las 12 tablas del dominio en una sola página
@@ -897,4 +914,31 @@ def administracion_unificada_view(request):
         'turnos_choices': PerfilUsuario.TURNO_CHOICES,
     }
     return render(request, 'gestion_pasteleria/centro_admin.html', context)
+
+
+# ==============================================================================
+# MANEJADOR DE ERROR PERSONALIZADO 404 (PÁGINA NO ENCONTRADA)
+# ==============================================================================
+def error_404_view(request, exception=None):
+    """
+    Vista personalizada para el manejo de errores HTTP 404 (Página No Encontrada).
+    Retorna respuesta JSON si la petición proviene de un cliente API REST o 'Accept: application/json',
+    o la plantilla HTML temática '404.html' para la navegación web.
+    """
+    accept_header = request.headers.get('Accept', '')
+    if request.path.startswith('/api/') or 'application/json' in accept_header:
+        from django.http import JsonResponse
+        return JsonResponse({
+            'error': '404 Not Found',
+            'mensaje': f'El recurso o endpoint "{request.path}" no existe en la API REST de Dulce Arte.',
+            'status_code': 404,
+            'timestamp': timezone.now().isoformat(),
+        }, status=404)
+
+    return render(request, '404.html', {
+        'path': request.path,
+        'request_path': request.path,
+        'exception': str(exception) if exception else None,
+    }, status=404)
+
 
