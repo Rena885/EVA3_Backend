@@ -71,6 +71,14 @@ python3 -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/python" "$APP_DIR/manage.py" collectstatic --noinput
 "$APP_DIR/venv/bin/python" "$APP_DIR/manage.py" seed_dulce_arte
 
+# Asegurar permisos para que Nginx (www-data) pueda servir staticfiles y media
+mkdir -p "$APP_DIR/media"
+chmod o+x "$HOME" 2>/dev/null || true
+chmod o+x "$APP_DIR" 2>/dev/null || true
+chmod -R 755 "$APP_DIR/staticfiles" 2>/dev/null || true
+chmod -R 775 "$APP_DIR/media" 2>/dev/null || true
+sudo chown -R $(whoami):www-data "$APP_DIR/media" 2>/dev/null || true
+
 # 7. Configurar Servicio Systemd para Gunicorn
 USER_ACTUAL=$(whoami)
 sudo bash -c "cat > /etc/systemd/system/dulce_arte.service" <<EOF
