@@ -217,9 +217,13 @@ def pedidos_list_view(request):
             Q(codigo_pedido__icontains=q)
             | Q(cliente__nombre_completo__icontains=q)
             | Q(cliente__rut__icontains=q)
+            | Q(producto_base__nombre__icontains=q)
             | Q(sabor_bizcocho__icontains=q)
             | Q(relleno_principal__icontains=q)
         )
+
+    productos_disponibles = ProductoPasteleria.objects.filter(activo=True).prefetch_related('items_bom__insumo').order_by('nombre')
+    clientes_disponibles = Cliente.objects.all().order_by('nombre_completo')
 
     context = {
         'pedidos': pedidos,
@@ -228,11 +232,13 @@ def pedidos_list_view(request):
         'busqueda': q,
         'estados_kanban': PedidoPersonalizado.ESTADO_KANBAN_CHOICES,
         'estados_comerciales': PedidoPersonalizado.ESTADO_COMERCIAL_CHOICES,
+        'productos_disponibles': productos_disponibles,
+        'clientes_disponibles': clientes_disponibles,
     }
     return render(request, 'gestion_pasteleria/pedidos_list.html', context)
 
 
-@requiere_roles('ADMIN', 'VENTAS')
+@requiere_roles('ADMIN', 'VENTAS', 'BODEGA', 'COCINA')
 def pedido_crear_view(request):
     if request.method == 'POST':
         form = PedidoPersonalizadoForm(request.POST, request.FILES)
@@ -248,7 +254,7 @@ def pedido_crear_view(request):
                 estado_anterior='RECIBIDO',
                 estado_nuevo=pedido.estado_kanban,
                 usuario=request.user,
-                comentario='Cotización y pedido personalizado registrado en el sistema.',
+                comentario='Cotización / venta registrada en el sistema.',
             )
 
             # Si el usuario agregó un insumo extra opcional en el formulario rápido
@@ -270,14 +276,42 @@ def pedido_crear_view(request):
                 except Exception:
                     pass
 
+            # Si se solicitó descontar insumos BOM inmediatamente al vender
+            descontar_inmediato = request.POST.get('descontar_bom_inmediato') == '1'
+            msg_bom = ''
+            if descontar_inmediato and (pedido.producto_base.items_bom.exists() or pedido.insumos_extra.exists()):
+                try:
+                    ok, detalle_bom = pedido.descontar_insumos_bom(usuario=request.user)
+                    if ok:
+                        msg_bom = f" ({detalle_bom})"
+                except ValidationError as exc:
+                    messages.warning(
+                        request,
+                        f"El pedido fue creado, pero el descuento automático BOM quedó pendiente: {exc.message}",
+                    )
+
             messages.success(
                 request,
-                f"Pedido personalizado {pedido.codigo_pedido} creado exitosamente. "
-                f"Precio total cotizado: ${pedido.precio_total:,.0f} CLP.",
+                f"Venta / Pedido {pedido.codigo_pedido} ('{pedido.producto_base.nombre}') creado exitosamente. "
+                f"Total: ${pedido.precio_total:,.0f} CLP.{msg_bom}",
             )
             return redirect('pedido_detalle', pk=pedido.pk)
+        else:
+            errores = '; '.join([f"{k}: {', '.join(v)}" for k, v in form.errors.items()])
+            messages.error(request, f"Por favor verifica los datos del pedido: {errores}")
     else:
-        form = PedidoPersonalizadoForm()
+        initial_data = {}
+        prod_pre = request.GET.get('producto')
+        if prod_pre:
+            prod_obj = ProductoPasteleria.objects.filter(pk=prod_pre, activo=True).first()
+            if prod_obj:
+                initial_data['producto_base'] = prod_obj.pk
+                initial_data['porciones_solicitadas'] = prod_obj.porciones_base
+                initial_data['sabor_bizcocho'] = f"Receta {prod_obj.nombre}"
+                initial_data['relleno_principal'] = 'Ingredientes según Receta BOM'
+                initial_data['cobertura_diseno'] = 'Presentación Estándar'
+                initial_data['descripcion_diseno'] = prod_obj.descripcion or f"Elaboración de {prod_obj.nombre}"
+        form = PedidoPersonalizadoForm(initial=initial_data)
 
     productos_catalogo = ProductoPasteleria.objects.filter(activo=True).prefetch_related('items_bom__insumo')
     insumos_disponibles = Insumo.objects.filter(activo=True).order_by('nombre')
@@ -286,7 +320,7 @@ def pedido_crear_view(request):
         'gestion_pasteleria/pedido_form.html',
         {
             'form': form,
-            'titulo': 'Nueva Cotización y Pedido Personalizado',
+            'titulo': 'Registrar Venta / Nuevo Pedido o Cotización',
             'productos_catalogo': productos_catalogo,
             'insumos_disponibles': insumos_disponibles,
         },
@@ -572,37 +606,87 @@ def kanban_cocina_view(request):
 # ==============================================================================
 # 5. FUNCIONALIDAD 3: BODEGA DE INSUMOS Y LISTA DE MATERIALES (BOM)
 # ==============================================================================
-@requiere_roles('ADMIN', 'BODEGA', 'COCINA')
+def _limpiar_decimal_str(valor, default='0'):
+    """Normaliza cadenas numéricas aceptando coma o punto decimal."""
+    if valor is None:
+        return Decimal(default)
+    texto = str(valor).strip().replace(',', '.')
+    if not texto:
+        return Decimal(default)
+    return Decimal(texto)
+
+
+@requiere_roles('ADMIN', 'BODEGA', 'COCINA', 'VENTAS')
 def inventario_bom_view(request):
     """
     Centro integral de Bodega de Insumos, Recetas Base, Configuración de Lista de
-    Materiales (BOM) y Kardex de Movimientos Automáticos.
+    Materiales (BOM), Creación de Productos con su Receta y Venta Rápida.
     """
+    tab_activa = request.GET.get('tab', 'insumos')
     editar_insumo_id = request.GET.get('editar_insumo')
     insumo_instancia = get_object_or_404(Insumo, pk=editar_insumo_id) if editar_insumo_id else None
 
+    editar_producto_id = request.GET.get('editar_producto')
+    producto_instancia = get_object_or_404(ProductoPasteleria, pk=editar_producto_id) if editar_producto_id else None
+    if editar_producto_id:
+        tab_activa = 'recetas'
+
     insumo_form = InsumoForm(instance=insumo_instancia)
-    producto_form = ProductoPasteleriaForm()
+    producto_form = ProductoPasteleriaForm(instance=producto_instancia)
     bom_form = ItemBOMForm()
 
     if request.method == 'POST':
-        if obtener_rol_usuario(request.user) not in ('ADMIN', 'BODEGA'):
+        accion = request.POST.get('accion')
+        rol_actual = obtener_rol_usuario(request.user)
+
+        if accion != 'vender_producto_rapido' and rol_actual not in ('ADMIN', 'BODEGA', 'COCINA'):
             messages.warning(
                 request,
-                "Acceso restringido: Solo el Encargado de Bodega o Administración puede modificar insumos, stock o recetas BOM.",
+                "Acceso restringido: Solo Administración, Bodega o Cocina pueden modificar insumos, stock o recetas BOM.",
             )
             return redirect('inventario_bom')
-        accion = request.POST.get('accion')
+
+        post_data = request.POST.copy()
+        for campo_num in (
+            'stock_actual',
+            'stock_minimo',
+            'costo_unitario',
+            'cantidad_requerida',
+            'merma_tecnica_pct',
+            'precio_base',
+            'tiempo_elaboracion_horas',
+        ):
+            if campo_num in post_data and post_data[campo_num]:
+                post_data[campo_num] = str(post_data[campo_num]).strip().replace(',', '.')
 
         # 1. Crear o Editar Insumo
         if accion == 'guardar_insumo':
-            pk_edit = request.POST.get('insumo_pk')
+            pk_edit = post_data.get('insumo_pk')
             inst = get_object_or_404(Insumo, pk=pk_edit) if pk_edit else None
-            insumo_form = InsumoForm(request.POST, instance=inst)
+            es_nuevo = inst is None
+            insumo_form = InsumoForm(post_data, instance=inst)
             if insumo_form.is_valid():
                 ins = insumo_form.save()
-                messages.success(request, f"Insumo '{ins.nombre}' ({ins.codigo_sku}) guardado correctamente.")
-                return redirect('inventario_bom')
+                if es_nuevo and ins.stock_actual > 0:
+                    MovimientoInventario.objects.create(
+                        insumo=ins,
+                        tipo_movimiento='ENTRADA_COMPRA',
+                        cantidad=ins.stock_actual,
+                        stock_anterior=Decimal('0.000'),
+                        stock_resultante=ins.stock_actual,
+                        usuario=request.user,
+                        motivo=f"Stock inicial registrado al crear insumo '{ins.nombre}' ({ins.codigo_sku})",
+                    )
+                messages.success(
+                    request,
+                    f"Insumo '{ins.nombre}' ({ins.codigo_sku}) guardado correctamente en bodega "
+                    f"(Stock disponible: {ins.stock_actual} {ins.unidad_medida}).",
+                )
+                return redirect('/bodega/bom/?tab=insumos')
+            else:
+                errores = '; '.join([f"{k}: {', '.join(v)}" for k, v in insumo_form.errors.items()])
+                messages.error(request, f"No se pudo guardar el insumo. Verifica: {errores}")
+                tab_activa = 'insumos'
 
         # 2. Eliminar Insumo
         elif accion == 'eliminar_insumo':
@@ -617,7 +701,7 @@ def inventario_bom_view(request):
             else:
                 ins_del.delete()
                 messages.success(request, "Insumo eliminado de bodega.")
-            return redirect('inventario_bom')
+            return redirect('/bodega/bom/?tab=insumos')
 
         # 3. Ajuste de Stock / Recepción de Compra o Merma
         elif accion == 'movimiento_stock':
@@ -625,7 +709,7 @@ def inventario_bom_view(request):
             tipo_mov = request.POST.get('tipo_movimiento', 'ENTRADA_COMPRA')
             motivo = request.POST.get('motivo', 'Ajuste manual en bodega').strip()
             try:
-                cantidad = Decimal(str(request.POST.get('cantidad', '0')))
+                cantidad = _limpiar_decimal_str(request.POST.get('cantidad', '0'))
                 if cantidad <= 0:
                     raise ValueError()
                 anterior = insumo_obj.stock_actual
@@ -635,7 +719,7 @@ def inventario_bom_view(request):
                             request,
                             f"No puedes rebajar {cantidad} {insumo_obj.unidad_medida}; el stock actual es {anterior}.",
                         )
-                        return redirect('inventario_bom')
+                        return redirect('/bodega/bom/?tab=insumos')
                     insumo_obj.stock_actual = anterior - cantidad
                 else:
                     tipo_mov = 'ENTRADA_COMPRA'
@@ -657,43 +741,241 @@ def inventario_bom_view(request):
                 )
             except Exception:
                 messages.error(request, "Ingresa una cantidad numérica válida mayor que cero.")
-            return redirect('inventario_bom')
+            return redirect('/bodega/bom/?tab=insumos')
 
-        # 4. Agregar Componente a la Lista de Materiales (BOM)
+        # 4. Agregar o Actualizar Componente en la Lista de Materiales (BOM)
         elif accion == 'agregar_item_bom':
-            bom_form = ItemBOMForm(request.POST)
-            if bom_form.is_valid():
-                item = bom_form.save()
+            prod_id = post_data.get('producto')
+            ins_id = post_data.get('insumo')
+            etapa_val = post_data.get('etapa_uso') or 'RELLENO'
+            notas_val = (post_data.get('notas_tecnicas') or '').strip()
+            try:
+                prod_obj = get_object_or_404(ProductoPasteleria, pk=prod_id)
+                ins_obj = get_object_or_404(Insumo, pk=ins_id)
+                cant_val = _limpiar_decimal_str(post_data.get('cantidad_requerida', '1'), '1')
+                merma_val = _limpiar_decimal_str(post_data.get('merma_tecnica_pct', '0'), '0')
+                if cant_val <= 0:
+                    cant_val = Decimal('1.000')
+                if merma_val < 0:
+                    merma_val = Decimal('0.00')
+
+                item, creado = ItemBOM.objects.update_or_create(
+                    producto=prod_obj,
+                    insumo=ins_obj,
+                    etapa_uso=etapa_val,
+                    defaults={
+                        'cantidad_requerida': cant_val,
+                        'merma_tecnica_pct': merma_val,
+                        'notas_tecnicas': notas_val,
+                    },
+                )
+                verbo = 'añadido a' if creado else 'actualizado en'
                 messages.success(
                     request,
-                    f"Componente BOM añadido: {item.insumo.nombre} ({item.cantidad_con_merma} {item.insumo.unidad_medida}) "
-                    f"para '{item.producto.nombre}'.",
+                    f"Ingrediente '{item.insumo.nombre}' ({item.cantidad_con_merma} {item.insumo.unidad_medida}) "
+                    f"{verbo} la receta de '{item.producto.nombre}'.",
                 )
-                return redirect('inventario_bom')
-            else:
-                messages.error(request, "Verifica los datos del componente BOM (evita duplicar insumo en la misma etapa).")
+            except Exception as exc:
+                messages.error(request, f"No se pudo vincular el insumo a la receta: {exc}")
+            return redirect('/bodega/bom/?tab=recetas')
 
         # 5. Eliminar Componente BOM
         elif accion == 'eliminar_item_bom':
             item_del = get_object_or_404(ItemBOM, pk=request.POST.get('item_bom_id'))
+            nombre_prod = item_del.producto.nombre
+            nombre_ins = item_del.insumo.nombre
             item_del.delete()
-            messages.info(request, "Componente retirado de la Lista de Materiales (BOM).")
-            return redirect('inventario_bom')
+            messages.info(request, f"Ingrediente '{nombre_ins}' retirado de la receta '{nombre_prod}'.")
+            return redirect('/bodega/bom/?tab=recetas')
 
-        # 6. Crear Nuevo Producto / Receta Base
+        # 6. Crear o Editar Producto / Receta Base (con sus ingredientes BOM en un solo paso)
         elif accion == 'guardar_producto':
-            producto_form = ProductoPasteleriaForm(request.POST)
+            pk_prod = post_data.get('producto_pk')
+            inst_prod = get_object_or_404(ProductoPasteleria, pk=pk_prod) if pk_prod else None
+            producto_form = ProductoPasteleriaForm(post_data, instance=inst_prod)
             if producto_form.is_valid():
                 prod = producto_form.save()
-                messages.success(request, f"Receta Base '{prod.nombre}' registrada en el catálogo.")
-                return redirect('inventario_bom')
+
+                # Procesar ingredientes de la receta enviados junto con el producto
+                insumo_ids = request.POST.getlist('receta_insumo_id')
+                cantidades = request.POST.getlist('receta_cantidad')
+                etapas = request.POST.getlist('receta_etapa')
+                mermas = request.POST.getlist('receta_merma')
+
+                insumos_agregados = 0
+                for idx, ins_id in enumerate(insumo_ids):
+                    if not ins_id or not str(ins_id).strip():
+                        continue
+                    ins_obj = Insumo.objects.filter(pk=ins_id).first()
+                    if not ins_obj:
+                        continue
+                    cant_raw = cantidades[idx] if idx < len(cantidades) else '1'
+                    etapa_raw = etapas[idx] if idx < len(etapas) and etapas[idx] else 'RELLENO'
+                    merma_raw = mermas[idx] if idx < len(mermas) else '0'
+                    try:
+                        cant_dec = _limpiar_decimal_str(cant_raw, '1')
+                        if cant_dec <= 0:
+                            cant_dec = Decimal('1.000')
+                    except Exception:
+                        cant_dec = Decimal('1.000')
+                    try:
+                        merma_dec = _limpiar_decimal_str(merma_raw, '0')
+                        if merma_dec < 0:
+                            merma_dec = Decimal('0.00')
+                    except Exception:
+                        merma_dec = Decimal('0.00')
+
+                    ItemBOM.objects.update_or_create(
+                        producto=prod,
+                        insumo=ins_obj,
+                        etapa_uso=etapa_raw,
+                        defaults={
+                            'cantidad_requerida': cant_dec,
+                            'merma_tecnica_pct': merma_dec,
+                            'notas_tecnicas': f"Ingrediente receta {prod.nombre}",
+                        },
+                    )
+                    insumos_agregados += 1
+
+                total_bom = prod.items_bom.count()
+                messages.success(
+                    request,
+                    f"Producto y Receta '{prod.nombre}' ({prod.codigo}) guardado exitosamente con "
+                    f"{total_bom} ingrediente(s) en su receta BOM. ¡Ya está disponible para vender!",
+                )
+                return redirect('/bodega/bom/?tab=recetas')
+            else:
+                errores = '; '.join([f"{k}: {', '.join(v)}" for k, v in producto_form.errors.items()])
+                messages.error(request, f"No se pudo guardar el producto/receta: {errores}")
+                tab_activa = 'recetas'
+
+        # 7. Eliminar o Desactivar Producto / Receta Base
+        elif accion == 'eliminar_producto':
+            prod_del = get_object_or_404(ProductoPasteleria, pk=request.POST.get('producto_id'))
+            if prod_del.pedidos.exists():
+                prod_del.activo = False
+                prod_del.save(update_fields=['activo'])
+                messages.info(
+                    request,
+                    f"El producto '{prod_del.nombre}' posee ventas registradas, por lo que fue desactivado del catálogo.",
+                )
+            else:
+                prod_del.delete()
+                messages.success(request, "Producto y receta eliminados del catálogo.")
+            return redirect('/bodega/bom/?tab=recetas')
+
+        # 8. Venta Rápida de Producto (Descuenta Insumos de la Receta automáticamente)
+        elif accion == 'vender_producto_rapido':
+            prod_obj = get_object_or_404(ProductoPasteleria, pk=request.POST.get('producto_id'))
+            cliente_id = request.POST.get('cliente_id')
+            nuevo_cliente_txt = (request.POST.get('nuevo_cliente_nombre') or '').strip()
+            next_url = request.POST.get('next_url') or '/bodega/bom/?tab=recetas'
+            try:
+                cantidad_venta = max(1, int(request.POST.get('cantidad_venta', prod_obj.porciones_base) or 1))
+            except Exception:
+                cantidad_venta = prod_obj.porciones_base or 1
+
+            if nuevo_cliente_txt:
+                cliente_obj = Cliente.objects.filter(nombre_completo__iexact=nuevo_cliente_txt).first()
+                if not cliente_obj:
+                    correlativo = Cliente.objects.count() + 200
+                    rut_auto = f"88.{correlativo:03d}.{correlativo:03d}-K"
+                    while Cliente.objects.filter(rut=rut_auto).exists():
+                        correlativo += 1
+                        rut_auto = f"88.{correlativo:03d}.{correlativo:03d}-K"
+                    cliente_obj = Cliente.objects.create(
+                        rut=rut_auto,
+                        nombre_completo=nuevo_cliente_txt,
+                        tipo_cliente='PARTICULAR',
+                        email='venta@dulcearte.cl',
+                        telefono='+56 9 0000 0000',
+                        direccion_habitual='Retiro en Tienda Dulce Arte',
+                        comuna='Providencia',
+                    )
+            elif cliente_id:
+                cliente_obj = get_object_or_404(Cliente, pk=cliente_id)
+            else:
+                cliente_obj, _ = Cliente.objects.get_or_create(
+                    rut='11.111.111-1',
+                    defaults={
+                        'nombre_completo': 'Cliente General / Venta en Mesón',
+                        'tipo_cliente': 'PARTICULAR',
+                        'email': 'meson@dulcearte.cl',
+                        'telefono': '+56 9 1111 1111',
+                        'direccion_habitual': 'Retiro en Local Dulce Arte',
+                        'comuna': 'Providencia',
+                    },
+                )
+
+            pedido = PedidoPersonalizado.objects.create(
+                cliente=cliente_obj,
+                producto_base=prod_obj,
+                vendedor=request.user,
+                pastelero_asignado=request.user,
+                porciones_solicitadas=cantidad_venta,
+                sabor_bizcocho=f"Receta {prod_obj.nombre}",
+                relleno_principal='Ingredientes según Receta BOM',
+                cobertura_diseno='Presentación Estándar',
+                nivel_complejidad='ESTANDAR',
+                descripcion_diseno=f"Venta directa de {cantidad_venta} unidad(es)/porción(es) de {prod_obj.nombre}.",
+                fecha_entrega_comprometida=timezone.now() + timezone.timedelta(hours=1),
+                modalidad_entrega='RETIRO_TIENDA',
+                direccion_entrega=cliente_obj.direccion_habitual or 'Retiro en Tienda Dulce Arte',
+                comuna_entrega=cliente_obj.comuna or 'Providencia',
+                estado_comercial='CONFIRMADO',
+                estado_kanban='RECIBIDO',
+                prioridad='NORMAL',
+            )
+            pedido.recalcular_cotizacion(guardar=True)
+            pedido.abono_pagado = pedido.precio_total
+            pedido.save(update_fields=['abono_pagado'])
+
+            HistorialKanban.objects.create(
+                pedido=pedido,
+                estado_anterior='RECIBIDO',
+                estado_nuevo='RECIBIDO',
+                usuario=request.user,
+                comentario=f"Venta registrada: {cantidad_venta}x '{prod_obj.nombre}'.",
+            )
+
+            if prod_obj.items_bom.exists():
+                try:
+                    pedido.cambiar_estado_kanban(
+                        'LISTO',
+                        usuario=request.user,
+                        comentario=f"Venta directa y preparación de '{prod_obj.nombre}' con descuento automático de insumos BOM.",
+                    )
+                    pedido.estado_comercial = 'ENTREGADO'
+                    pedido.save(update_fields=['estado_comercial'])
+                    messages.success(
+                        request,
+                        f"¡Venta realizada exitosamente! Pedido {pedido.codigo_pedido}: {cantidad_venta}x '{prod_obj.nombre}' "
+                        f"por ${pedido.precio_total:,.0f} CLP. Se descontaron automáticamente los insumos de la receta en Bodega.",
+                    )
+                except ValidationError as exc:
+                    messages.warning(
+                        request,
+                        f"Pedido {pedido.codigo_pedido} registrado (${pedido.precio_total:,.0f} CLP), "
+                        f"pero no se pudo descontar el stock automáticamente: {exc.message}",
+                    )
+            else:
+                pedido.estado_kanban = 'LISTO'
+                pedido.estado_comercial = 'ENTREGADO'
+                pedido.save(update_fields=['estado_kanban', 'estado_comercial'])
+                messages.success(
+                    request,
+                    f"¡Venta realizada! Pedido {pedido.codigo_pedido}: {cantidad_venta}x '{prod_obj.nombre}' "
+                    f"por ${pedido.precio_total:,.0f} CLP.",
+                )
+            return redirect(next_url)
 
     insumos = Insumo.objects.select_related('categoria').filter(activo=True).order_by('nombre')
-    productos = ProductoPasteleria.objects.prefetch_related('items_bom__insumo').filter(activo=True)
+    productos = ProductoPasteleria.objects.prefetch_related('items_bom__insumo').filter(activo=True).order_by('-id')
     movimientos = MovimientoInventario.objects.select_related(
         'insumo', 'pedido_asociado', 'usuario'
-    )[:25]
+    )[:30]
     categorias = CategoriaInsumo.objects.all()
+    clientes = Cliente.objects.all().order_by('nombre_completo')
 
     valor_total_bodega = sum((i.valor_inventario_total for i in insumos), Decimal('0'))
 
@@ -701,15 +983,19 @@ def inventario_bom_view(request):
         request,
         'gestion_pasteleria/inventario_bom.html',
         {
+            'tab_activa': tab_activa,
             'insumos': insumos,
             'productos': productos,
             'movimientos': movimientos,
             'categorias': categorias,
+            'clientes': clientes,
             'valor_total_bodega': valor_total_bodega,
             'insumo_form': insumo_form,
             'insumo_instancia': insumo_instancia,
             'producto_form': producto_form,
+            'producto_instancia': producto_instancia,
             'bom_form': bom_form,
+            'etapas_bom': ItemBOM.ETAPA_USO_CHOICES,
         },
     )
 

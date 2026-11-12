@@ -6,14 +6,57 @@
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
     <div>
-        <h4 class="fw-bold mb-0">1. Cotización y Registro de Pedidos Personalizados</h4>
-        <p class="text-muted small mb-0">Gestión comercial de tortas a medida, cálculo automático por porciones/complejidad y explosión BOM.</p>
+        <h4 class="fw-bold mb-0">1. Ventas, Cotizaciones y Pedidos Personalizados</h4>
+        <p class="text-muted small mb-0">Vende productos del catálogo con descuento automático de receta (BOM) o registra pedidos personalizados.</p>
     </div>
-    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'VENTAS' %}
-    <a href="{% url 'pedido_crear' %}" class="btn btn-dulce">
-        <i class="bi bi-plus-lg me-1"></i> Nueva Cotización / Pedido Personalizado
-    </a>
-    {% endif %}
+    <div class="d-flex gap-2 flex-wrap">
+        <a href="{% url 'inventario_bom' %}?tab=recetas" class="btn btn-outline-dark">
+            <i class="bi bi-journal-plus me-1"></i> Crear Producto / Receta
+        </a>
+        {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'VENTAS' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}
+        <a href="{% url 'pedido_crear' %}" class="btn btn-dulce">
+            <i class="bi bi-plus-lg me-1"></i> Nueva Cotización / Pedido Personalizado
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Venta Rápida de Producto del Catálogo -->
+<div class="da-card p-3 mb-3 border-success">
+    <form method="post" action="{% url 'inventario_bom' %}" class="row g-2 align-items-end">
+        {% csrf_token %}
+        <input type="hidden" name="accion" value="vender_producto_rapido">
+        <input type="hidden" name="next_url" value="{% url 'pedidos_list' %}">
+        <div class="col-md-4">
+            <label class="form-label small fw-bold text-success mb-1">
+                <i class="bi bi-cart-check-fill me-1"></i> Venta Rápida de Producto / Receta (Descuenta Stock BOM)
+            </label>
+            <select name="producto_id" class="form-select form-select-sm" required>
+                <option value="">-- Seleccionar Producto a Vender --</option>
+                {% for prod in productos_disponibles %}
+                <option value="{{ prod.pk }}">{{ prod.nombre }} — ${{ prod.precio_base|floatformat:0|intcomma }} (Base: {{ prod.porciones_base }} un/porc.)</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small fw-bold mb-1">Cantidad / Porciones</label>
+            <input type="number" name="cantidad_venta" value="1" min="1" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small fw-bold mb-1">Cliente</label>
+            <select name="cliente_id" class="form-select form-select-sm">
+                <option value="">Cliente Mesón / Venta Directa</option>
+                {% for cli in clientes_disponibles %}
+                <option value="{{ cli.pk }}">{{ cli.nombre_completo }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-3 d-flex gap-1">
+            <button type="submit" class="btn btn-success btn-sm w-100 fw-bold">
+                <i class="bi bi-cash-coin me-1"></i> Vender Producto Ahora
+            </button>
+        </div>
+    </form>
 </div>
 
 <!-- Barra de Filtros y Búsqueda -->

@@ -1,19 +1,22 @@
 {% extends "base.html" %}
 {% load humanize %}
 
-{% block title %}Bodega de Insumos y Lista de Materiales (BOM) · Dulce Arte{% endblock %}
+{% block title %}Bodega de Insumos, Recetas y Productos (BOM) · Dulce Arte{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
     <div>
         <h4 class="fw-bold mb-0">
-            <i class="bi bi-boxes text-danger me-1"></i> 3. Inventario de Bodega y Lista de Materiales (BOM)
+            <i class="bi bi-boxes text-danger me-1"></i> 3. Bodega de Insumos, Recetas y Catálogo de Productos (BOM)
         </h4>
         <p class="text-muted small mb-0">
-            Control de insumos perecibles, recetas estándar (Bill of Materials) y Kardex auditable de descuentos automáticos por pedido.
+            1° Registra tus insumos (ej: queso, pan, jamón) · 2° Crea una receta/producto con esos insumos · 3° Vende el producto descontando stock automáticamente.
         </p>
     </div>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+        <a href="{% url 'pedido_crear' %}" class="btn btn-dulce btn-sm">
+            <i class="bi bi-cart-plus me-1"></i> Ir a Vender / Nuevo Pedido
+        </a>
         <span class="badge bg-dark fs-6 px-3 py-2">
             Valorización Bodega: ${{ valor_total_bodega|floatformat:0|intcomma }} CLP
         </span>
@@ -23,17 +26,17 @@
 <!-- Pestañas de Navegación Bodega / Recetas BOM / Kardex -->
 <ul class="nav nav-tabs mb-3 fw-semibold" id="bomTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="tab-insumos" data-bs-toggle="tab" data-bs-target="#pane-insumos" type="button">
-            <i class="bi bi-box-seam me-1"></i> 1. Stock de Insumos y Perecibles ({{ insumos|length }})
+        <button class="nav-link {% if tab_activa == 'insumos' or not tab_activa %}active{% endif %}" id="tab-insumos" data-bs-toggle="tab" data-bs-target="#pane-insumos" type="button" role="tab">
+            <i class="bi bi-box-seam me-1"></i> 1. Insumos en Bodega ({{ insumos|length }})
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="tab-recetas" data-bs-toggle="tab" data-bs-target="#pane-recetas" type="button">
-            <i class="bi bi-journal-richtext me-1"></i> 2. Recetas Base y Lista de Materiales (BOM) ({{ productos|length }})
+        <button class="nav-link {% if tab_activa == 'recetas' %}active{% endif %}" id="tab-recetas" data-bs-toggle="tab" data-bs-target="#pane-recetas" type="button" role="tab">
+            <i class="bi bi-journal-richtext me-1"></i> 2. Recetas, Productos y Venta ({{ productos|length }})
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="tab-kardex" data-bs-toggle="tab" data-bs-target="#pane-kardex" type="button">
+        <button class="nav-link {% if tab_activa == 'kardex' %}active{% endif %}" id="tab-kardex" data-bs-toggle="tab" data-bs-target="#pane-kardex" type="button" role="tab">
             <i class="bi bi-clock-history me-1"></i> 3. Kardex de Movimientos y Trazabilidad BOM
         </button>
     </li>
@@ -41,12 +44,112 @@
 
 <div class="tab-content">
     <!-- PESTAÑA 1: STOCK DE INSUMOS Y CRUD -->
-    <div class="tab-pane fade show active" id="pane-insumos" role="tabpanel">
+    <div class="tab-pane fade {% if tab_activa == 'insumos' or not tab_activa %}show active{% endif %}" id="pane-insumos" role="tabpanel">
         <div class="row g-4">
+            {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}
+            <!-- Formulario Crear / Editar Insumo -->
+            <div class="col-lg-4 order-lg-2">
+                <div class="da-card p-4">
+                    <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
+                        {% if insumo_instancia %}
+                        <i class="bi bi-pencil-square me-1"></i> Editar Insumo: {{ insumo_instancia.nombre }}
+                        {% else %}
+                        <i class="bi bi-plus-circle-fill me-1"></i> Registrar Nuevo Insumo en Bodega
+                        {% endif %}
+                    </h6>
+
+                    {% if insumo_form.errors %}
+                    <div class="alert alert-danger small py-2">
+                        <strong>Revisa los campos:</strong>
+                        {{ insumo_form.errors }}
+                    </div>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'inventario_bom' %}?tab=insumos">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="guardar_insumo">
+                        {% if insumo_instancia %}
+                        <input type="hidden" name="insumo_pk" value="{{ insumo_instancia.pk }}">
+                        {% endif %}
+
+                        <div class="row g-2">
+                            <div class="col-12">
+                                <label class="form-label small fw-bold mb-1">Nombre del Insumo *</label>
+                                {{ insumo_form.nombre }}
+                            </div>
+                            <div class="col-7">
+                                <label class="form-label small fw-bold mb-1">Categoría</label>
+                                {{ insumo_form.categoria }}
+                            </div>
+                            <div class="col-5">
+                                <label class="form-label small fw-bold mb-1">Código SKU</label>
+                                {{ insumo_form.codigo_sku }}
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted mb-1">¿Categoría nueva? Escríbela aquí (Opcional)</label>
+                                {{ insumo_form.nueva_categoria }}
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small fw-bold mb-1">Unidad</label>
+                                {{ insumo_form.unidad_medida }}
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small fw-bold mb-1">Stock Inicial *</label>
+                                {{ insumo_form.stock_actual }}
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label small fw-bold mb-1">Costo Unit. ($)</label>
+                                {{ insumo_form.costo_unitario }}
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold mb-1">Stock Mínimo Alerta</label>
+                                {{ insumo_form.stock_minimo }}
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold mb-1">Vencimiento (Opcional)</label>
+                                {{ insumo_form.fecha_vencimiento }}
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted mb-1">Ubicación Bodega</label>
+                                {{ insumo_form.ubicacion_bodega }}
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted mb-1">Código de Lote</label>
+                                {{ insumo_form.lote_actual }}
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small text-muted mb-1">Proveedor</label>
+                                {{ insumo_form.proveedor }}
+                            </div>
+                            <input type="hidden" name="activo" value="on">
+                        </div>
+
+                        <div class="d-flex gap-2 mt-3">
+                            <button type="submit" class="btn btn-dulce w-100">
+                                <i class="bi bi-save me-1"></i> Guardar Insumo en Bodega
+                            </button>
+                            {% if insumo_instancia %}
+                            <a href="{% url 'inventario_bom' %}?tab=insumos" class="btn btn-outline-secondary">Cancelar</a>
+                            {% endif %}
+                        </div>
+                    </form>
+
+                    <div class="border-top mt-3 pt-3 text-center">
+                        <small class="text-muted d-block mb-2">¿Ya agregaste tus insumos (ej: queso, pan, jamón)?</small>
+                        <button type="button" class="btn btn-outline-dark btn-sm w-100" onclick="document.getElementById('tab-recetas').click();">
+                            <i class="bi bi-journal-plus me-1"></i> Paso 2: Crear Receta / Producto con estos Insumos →
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
             <!-- Tabla de Insumos con Reposición Rápida -->
-            <div class="{% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}col-lg-8{% else %}col-12{% endif %}">
+            <div class="{% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}col-lg-8 order-lg-1{% else %}col-12{% endif %}">
                 <div class="da-card p-3">
-                    <h6 class="fw-bold mb-3">Catálogo de Materias Primas e Insumos en Bodega</h6>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h6 class="fw-bold mb-0">Catálogo de Materias Primas e Insumos en Bodega ({{ insumos|length }})</h6>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-hover align-middle small mb-0">
                             <thead class="table-light">
@@ -56,7 +159,7 @@
                                     <th>Stock Actual / Mínimo</th>
                                     <th>Costo Unit.</th>
                                     <th>Vencimiento / Lote</th>
-                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
+                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}
                                     <th>Ajuste Rápido Kardex</th>
                                     <th class="text-end">CRUD</th>
                                     {% endif %}
@@ -91,9 +194,9 @@
                                         {% endif %}
                                         <small class="d-block text-muted">{{ ins.lote_actual }}</small>
                                     </td>
-                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
+                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}
                                     <td>
-                                        <form method="post" class="d-flex gap-1">
+                                        <form method="post" action="{% url 'inventario_bom' %}?tab=insumos" class="d-flex gap-1">
                                             {% csrf_token %}
                                             <input type="hidden" name="accion" value="movimiento_stock">
                                             <input type="hidden" name="insumo_id" value="{{ ins.pk }}">
@@ -101,17 +204,17 @@
                                                 <option value="ENTRADA_COMPRA">+ Compra</option>
                                                 <option value="AJUSTE_MERMA">- Merma</option>
                                             </select>
-                                            <input type="number" step="0.1" name="cantidad" value="10" class="form-control form-control-sm py-0" style="width: 65px; font-size: 0.72rem;" required>
+                                            <input type="number" step="any" name="cantidad" value="10" class="form-control form-control-sm py-0" style="width: 65px; font-size: 0.72rem;" required>
                                             <input type="hidden" name="motivo" value="Ajuste operativo desde panel de Bodega">
                                             <button type="submit" class="btn btn-sm btn-outline-dark py-0 px-2">OK</button>
                                         </form>
                                     </td>
                                     <td class="text-end">
                                         <div class="btn-group btn-group-sm">
-                                            <a href="?editar_insumo={{ ins.pk }}" class="btn btn-outline-secondary" title="Editar Insumo">
+                                            <a href="?editar_insumo={{ ins.pk }}&tab=insumos" class="btn btn-outline-secondary" title="Editar Insumo">
                                                 <i class="bi bi-pencil"></i>
                                             </a>
-                                            <form method="post" class="d-inline" onsubmit="return confirm('¿Dar de baja o eliminar {{ ins.nombre }}?');">
+                                            <form method="post" action="{% url 'inventario_bom' %}?tab=insumos" class="d-inline" onsubmit="return confirm('¿Dar de baja o eliminar {{ ins.nombre }}?');">
                                                 {% csrf_token %}
                                                 <input type="hidden" name="accion" value="eliminar_insumo">
                                                 <input type="hidden" name="insumo_id" value="{{ ins.pk }}">
@@ -129,77 +232,178 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
 
-            {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
-            <!-- Formulario Crear / Editar Insumo -->
-            <div class="col-lg-4">
-                <div class="da-card p-4">
+    <!-- PESTAÑA 2: RECETAS BASE, NUEVOS PRODUCTOS Y VENTA -->
+    <div class="tab-pane fade {% if tab_activa == 'recetas' %}show active{% endif %}" id="pane-recetas" role="tabpanel">
+        <div class="row g-4">
+            {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}
+            <!-- Columna Derecha (Arriba en móvil): Crear Nuevo Producto + Receta en un solo paso -->
+            <div class="col-lg-5 order-lg-2">
+                <div class="da-card p-4 mb-3 border-danger">
                     <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
-                        {% if insumo_instancia %}
-                        Editar Insumo: {{ insumo_instancia.nombre }}
+                        <i class="bi bi-cake2-fill me-1"></i>
+                        {% if producto_instancia %}
+                        Editar Producto / Receta: {{ producto_instancia.nombre }}
                         {% else %}
-                        Registrar Nuevo Insumo en Bodega
+                        Crear Nueva Receta y Producto para Venta
                         {% endif %}
                     </h6>
-                    <form method="post">
+                    <p class="text-muted small mb-3">
+                        Define el producto (ej: <em>Pan con queso y jamón</em>), su precio de venta y selecciona abajo los insumos que lleva su receta.
+                    </p>
+
+                    {% if producto_form.errors %}
+                    <div class="alert alert-danger small py-2">
+                        <strong>Revisa los datos del producto:</strong>
+                        {{ producto_form.errors }}
+                    </div>
+                    {% endif %}
+
+                    <form method="post" action="{% url 'inventario_bom' %}?tab=recetas">
                         {% csrf_token %}
-                        <input type="hidden" name="accion" value="guardar_insumo">
-                        {% if insumo_instancia %}
-                        <input type="hidden" name="insumo_pk" value="{{ insumo_instancia.pk }}">
+                        <input type="hidden" name="accion" value="guardar_producto">
+                        {% if producto_instancia %}
+                        <input type="hidden" name="producto_pk" value="{{ producto_instancia.pk }}">
                         {% endif %}
-                        <div class="row g-2">
-                            {% for field in insumo_form %}
-                            <div class="{% if field.name in 'codigo_sku,unidad_medida,stock_actual,stock_minimo,costo_unitario,lote_actual' %}col-6{% else %}col-12{% endif %}">
-                                <label class="form-label small fw-bold mb-1">{{ field.label }}</label>
-                                {{ field }}
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-12">
+                                <label class="form-label small fw-bold mb-1">Nombre del Producto / Receta *</label>
+                                {{ producto_form.nombre }}
                             </div>
-                            {% endfor %}
+                            <div class="col-6">
+                                <label class="form-label small fw-bold mb-1">Precio Venta (CLP) *</label>
+                                {{ producto_form.precio_base }}
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small fw-bold mb-1">Porciones / Unidades Base</label>
+                                {{ producto_form.porciones_base }}
+                            </div>
+                            <div class="col-7">
+                                <label class="form-label small fw-bold mb-1">Categoría</label>
+                                {{ producto_form.categoria_producto }}
+                            </div>
+                            <div class="col-5">
+                                <label class="form-label small fw-bold mb-1">Código (Opcional)</label>
+                                {{ producto_form.codigo }}
+                            </div>
                         </div>
+
+                        <!-- Selector Múltiple de Ingredientes (Insumos) de la Receta -->
+                        <div class="p-3 rounded-3 bg-light border mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="small fw-bold text-dark mb-0">
+                                    <i class="bi bi-list-check text-danger me-1"></i> Ingredientes de la Receta (Insumos)
+                                </label>
+                                <button type="button" class="btn btn-outline-dark btn-sm py-0 px-2" id="btnAgregarFilaReceta" style="font-size: 0.75rem;">
+                                    + Otro ingrediente
+                                </button>
+                            </div>
+                            <small class="text-muted d-block mb-2" style="font-size: 0.75rem;">
+                                Selecciona los insumos (ej: Pan, Queso, Jamón) y cuánto se ocupa de cada uno.
+                            </small>
+
+                            <div id="contenedorFilasReceta">
+                                {% for i in "123" %}
+                                <div class="row g-1 align-items-center mb-2 fila-ingrediente-receta">
+                                    <div class="col-7">
+                                        <select name="receta_insumo_id" class="form-select form-select-sm">
+                                            <option value="">-- Seleccionar Insumo --</option>
+                                            {% for ins in insumos %}
+                                            <option value="{{ ins.pk }}">{{ ins.nombre }} ({{ ins.unidad_medida }} · Disp: {{ ins.stock_actual }})</option>
+                                            {% endfor %}
+                                        </select>
+                                    </div>
+                                    <div class="col-3">
+                                        <input type="number" step="any" name="receta_cantidad" value="1" class="form-control form-control-sm" placeholder="Cant.">
+                                    </div>
+                                    <div class="col-2 text-end">
+                                        <input type="hidden" name="receta_etapa" value="RELLENO">
+                                        <input type="hidden" name="receta_merma" value="0">
+                                        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 btn-quitar-fila" title="Quitar fila">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <div class="row g-2 mb-2">
+                            <div class="col-12">
+                                <label class="form-label small text-muted mb-1">Descripción / Notas de Receta (Opcional)</label>
+                                {{ producto_form.descripcion }}
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label small text-muted mb-1">Tiempo Cocina (Horas)</label>
+                                {{ producto_form.tiempo_elaboracion_horas }}
+                            </div>
+                            <div class="col-6 d-flex align-items-end pb-1">
+                                <div class="form-check">
+                                    {{ producto_form.requiere_refrigeracion }}
+                                    <label class="form-check-label small">Requiere Frío</label>
+                                </div>
+                            </div>
+                            <input type="hidden" name="activo" value="on">
+                        </div>
+
                         <div class="d-flex gap-2 mt-3">
-                            <button type="submit" class="btn btn-dulce btn-sm w-100">
-                                <i class="bi bi-save me-1"></i> Guardar Insumo
+                            <button type="submit" class="btn btn-dulce w-100">
+                                <i class="bi bi-check2-circle me-1"></i> Guardar Producto y su Receta
                             </button>
-                            {% if insumo_instancia %}
-                            <a href="{% url 'inventario_bom' %}" class="btn btn-outline-secondary btn-sm">Cancelar</a>
+                            {% if producto_instancia %}
+                            <a href="{% url 'inventario_bom' %}?tab=recetas" class="btn btn-outline-secondary">Cancelar</a>
                             {% endif %}
                         </div>
                     </form>
                 </div>
             </div>
             {% endif %}
-        </div>
-    </div>
 
-    <!-- PESTAÑA 2: RECETAS BASE Y LISTA DE MATERIALES (BOM) -->
-    <div class="tab-pane fade" id="pane-recetas" role="tabpanel">
-        <div class="row g-4">
-            <div class="{% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}col-lg-8{% else %}col-12{% endif %}">
+            <!-- Listado de Productos y Recetas con adición de insumos inline y Venta Rápida -->
+            <div class="{% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}col-lg-7 order-lg-1{% else %}col-12{% endif %}">
                 {% for prod in productos %}
                 <div class="da-card p-3 mb-3">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center border-bottom pb-2 mb-2">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center border-bottom pb-2 mb-2 gap-2">
                         <div>
                             <span class="badge bg-dark me-1">{{ prod.codigo }}</span>
                             <strong class="fs-6">{{ prod.nombre }}</strong>
-                            <small class="text-muted ms-2">(Base: {{ prod.porciones_base }} porciones)</small>
+                            <small class="text-muted ms-1">(Base: {{ prod.porciones_base }} unid/porc.)</small>
                         </div>
-                        <div class="small">
-                            <span class="me-3">Costo BOM: <strong class="text-danger">${{ prod.costo_bom_base|floatformat:0|intcomma }}</strong></span>
-                            <span class="me-3">Precio Base: <strong class="text-success">${{ prod.precio_base|floatformat:0|intcomma }}</strong></span>
+                        <div class="d-flex align-items-center gap-2 flex-wrap small">
+                            <span>Costo Receta: <strong class="text-danger">${{ prod.costo_bom_base|floatformat:0|intcomma }}</strong></span>
+                            <span>Precio Venta: <strong class="text-success fs-6">${{ prod.precio_base|floatformat:0|intcomma }}</strong></span>
                             <span class="badge bg-success-subtle text-success">Margen {{ prod.margen_bruto_pct }}%</span>
+                            {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}
+                            <a href="?editar_producto={{ prod.pk }}&tab=recetas" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Editar Producto">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="post" action="{% url 'inventario_bom' %}?tab=recetas" class="d-inline" onsubmit="return confirm('¿Eliminar o desactivar {{ prod.nombre }}?');">
+                                {% csrf_token %}
+                                <input type="hidden" name="accion" value="eliminar_producto">
+                                <input type="hidden" name="producto_id" value="{{ prod.pk }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Eliminar Producto">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
                         </div>
                     </div>
 
-                    <div class="table-responsive">
+                    <!-- Tabla de Ingredientes BOM del Producto -->
+                    <div class="table-responsive mb-2">
                         <table class="table table-sm align-middle small mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Etapa Receta</th>
+                                    <th>Etapa</th>
                                     <th>Insumo Requerido</th>
                                     <th>Cant. Neta</th>
                                     <th>Merma (%)</th>
                                     <th>Total a Descontar</th>
                                     <th>Costo Línea</th>
-                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
+                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}
                                     <th class="text-end">Quitar</th>
                                     {% endif %}
                                 </tr>
@@ -208,18 +412,18 @@
                                 {% for item in prod.items_bom.all %}
                                 <tr>
                                     <td><span class="badge bg-light text-dark border">{{ item.get_etapa_uso_display }}</span></td>
-                                    <td class="fw-semibold">{{ item.insumo.nombre }}</td>
+                                    <td class="fw-semibold">{{ item.insumo.nombre }} <small class="text-muted">(Disp: {{ item.insumo.stock_actual }} {{ item.insumo.unidad_medida }})</small></td>
                                     <td>{{ item.cantidad_requerida }} {{ item.insumo.unidad_medida }}</td>
                                     <td>{{ item.merma_tecnica_pct }}%</td>
                                     <td class="fw-bold text-primary">{{ item.cantidad_con_merma }} {{ item.insumo.unidad_medida }}</td>
                                     <td>${{ item.costo_linea|floatformat:0|intcomma }}</td>
-                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
+                                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}
                                     <td class="text-end">
-                                        <form method="post" class="d-inline">
+                                        <form method="post" action="{% url 'inventario_bom' %}?tab=recetas" class="d-inline">
                                             {% csrf_token %}
                                             <input type="hidden" name="accion" value="eliminar_item_bom">
                                             <input type="hidden" name="item_bom_id" value="{{ item.pk }}">
-                                            <button type="submit" class="btn btn-sm btn-link text-danger p-0">
+                                            <button type="submit" class="btn btn-sm btn-link text-danger p-0" title="Quitar insumo de la receta">
                                                 <i class="bi bi-x-circle"></i>
                                             </button>
                                         </form>
@@ -228,63 +432,83 @@
                                 </tr>
                                 {% empty %}
                                 <tr>
-                                    <td colspan="7" class="text-muted text-center">Sin componentes BOM registrados.</td>
+                                    <td colspan="7" class="text-muted text-center py-2">
+                                        Sin ingredientes aún. Agrega los insumos de esta receta aquí abajo:
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
+
+                    {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' or ROL_USUARIO_ACTUAL == 'COCINA' %}
+                    <!-- Formulario rápido inline para añadir otro insumo a esta receta -->
+                    <form method="post" action="{% url 'inventario_bom' %}?tab=recetas" class="row g-1 align-items-center bg-light p-2 rounded border mb-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="accion" value="agregar_item_bom">
+                        <input type="hidden" name="producto" value="{{ prod.pk }}">
+                        <div class="col-md-5">
+                            <select name="insumo" class="form-select form-select-sm" required>
+                                <option value="">+ Agregar insumo a '{{ prod.nombre }}'...</option>
+                                {% for ins in insumos %}
+                                <option value="{{ ins.pk }}">{{ ins.nombre }} ({{ ins.stock_actual }} {{ ins.unidad_medida }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <input type="number" step="any" name="cantidad_requerida" value="1" class="form-control form-control-sm" placeholder="Cant." required>
+                        </div>
+                        <div class="col-md-3">
+                            <select name="etapa_uso" class="form-select form-select-sm">
+                                {% for cod_etapa, nom_etapa in etapas_bom %}
+                                <option value="{{ cod_etapa }}" {% if cod_etapa == 'RELLENO' %}selected{% endif %}>{{ nom_etapa }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <input type="hidden" name="merma_tecnica_pct" value="0">
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-outline-dark btn-sm w-100">
+                                <i class="bi bi-plus-lg"></i> Añadir
+                            </button>
+                        </div>
+                    </form>
+                    {% endif %}
+
+                    <!-- Barra de Venta Directa del Producto -->
+                    <div class="p-2 rounded-3 border border-success-subtle bg-success-subtle d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <div class="small fw-bold text-success">
+                            <i class="bi bi-cart-check-fill me-1"></i> Vender este producto:
+                        </div>
+                        <form method="post" action="{% url 'inventario_bom' %}?tab=recetas" class="d-flex flex-wrap align-items-center gap-2">
+                            {% csrf_token %}
+                            <input type="hidden" name="accion" value="vender_producto_rapido">
+                            <input type="hidden" name="producto_id" value="{{ prod.pk }}">
+                            <div class="input-group input-group-sm" style="width: 135px;">
+                                <span class="input-group-text">Cant.</span>
+                                <input type="number" name="cantidad_venta" value="{{ prod.porciones_base }}" min="1" class="form-control" required>
+                            </div>
+                            <select name="cliente_id" class="form-select form-select-sm" style="width: 190px;">
+                                <option value="">Cliente Mesón (Directo)</option>
+                                {% for cli in clientes %}
+                                <option value="{{ cli.pk }}">{{ cli.nombre_completo }}</option>
+                                {% endfor %}
+                            </select>
+                            <button type="submit" class="btn btn-success btn-sm fw-bold">
+                                <i class="bi bi-cash-coin me-1"></i> Vender Ahora
+                            </button>
+                            <a href="{% url 'pedido_crear' %}?producto={{ prod.pk }}" class="btn btn-outline-dark btn-sm" title="Abrir formulario de cotización personalizada">
+                                Personalizar
+                            </a>
+                        </form>
+                    </div>
                 </div>
                 {% endfor %}
             </div>
-
-            {% if ROL_USUARIO_ACTUAL == 'ADMIN' or ROL_USUARIO_ACTUAL == 'BODEGA' %}
-            <!-- Formularios para Añadir Componente BOM o Nueva Receta -->
-            <div class="col-lg-4">
-                <div class="da-card p-4 mb-3">
-                    <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
-                        <i class="bi bi-diagram-2-fill me-1"></i> Añadir Componente a Lista de Materiales (BOM)
-                    </h6>
-                    <form method="post">
-                        {% csrf_token %}
-                        <input type="hidden" name="accion" value="agregar_item_bom">
-                        {% for field in bom_form %}
-                        <div class="mb-2">
-                            <label class="form-label small fw-bold mb-1">{{ field.label }}</label>
-                            {{ field }}
-                        </div>
-                        {% endfor %}
-                        <button type="submit" class="btn btn-dulce btn-sm w-100 mt-2">
-                            <i class="bi bi-plus-circle me-1"></i> Vincular Insumo al BOM
-                        </button>
-                    </form>
-                </div>
-
-                <div class="da-card p-4">
-                    <h6 class="fw-bold text-dark border-bottom pb-2 mb-3">
-                        <i class="bi bi-cake2 me-1"></i> Crear Nueva Receta / Producto Base
-                    </h6>
-                    <form method="post">
-                        {% csrf_token %}
-                        <input type="hidden" name="accion" value="guardar_producto">
-                        {% for field in producto_form %}
-                        <div class="mb-2">
-                            <label class="form-label small fw-bold mb-1">{{ field.label }}</label>
-                            {{ field }}
-                        </div>
-                        {% endfor %}
-                        <button type="submit" class="btn btn-dark btn-sm w-100 mt-2">
-                            Crear Producto Base
-                        </button>
-                    </form>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </div>
 
     <!-- PESTAÑA 3: KARDEX DE MOVIMIENTOS DE INVENTARIO -->
-    <div class="tab-pane fade" id="pane-kardex" role="tabpanel">
+    <div class="tab-pane fade {% if tab_activa == 'kardex' %}show active{% endif %}" id="pane-kardex" role="tabpanel">
         <div class="da-card p-3">
             <h6 class="fw-bold mb-3">Bitácora Auditable de Movimientos de Inventario y Descuentos BOM</h6>
             <div class="table-responsive">
@@ -338,4 +562,43 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const contenedor = document.getElementById('contenedorFilasReceta');
+    const btnAgregar = document.getElementById('btnAgregarFilaReceta');
+
+    function vincularBotonesQuitar() {
+        if (!contenedor) return;
+        contenedor.querySelectorAll('.btn-quitar-fila').forEach(btn => {
+            btn.onclick = function() {
+                const filas = contenedor.querySelectorAll('.fila-ingrediente-receta');
+                if (filas.length > 1) {
+                    btn.closest('.fila-ingrediente-receta').remove();
+                } else {
+                    const select = btn.closest('.fila-ingrediente-receta').querySelector('select');
+                    if (select) select.value = '';
+                }
+            };
+        });
+    }
+
+    if (btnAgregar && contenedor) {
+        btnAgregar.addEventListener('click', function() {
+            const primeraFila = contenedor.querySelector('.fila-ingrediente-receta');
+            if (!primeraFila) return;
+            const nuevaFila = primeraFila.cloneNode(true);
+            const select = nuevaFila.querySelector('select[name="receta_insumo_id"]');
+            const inputCant = nuevaFila.querySelector('input[name="receta_cantidad"]');
+            if (select) select.value = '';
+            if (inputCant) inputCant.value = '1';
+            contenedor.appendChild(nuevaFila);
+            vincularBotonesQuitar();
+        });
+        vincularBotonesQuitar();
+    }
+});
+</script>
 {% endblock %}

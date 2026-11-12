@@ -252,4 +252,75 @@ class DulceArteBusinessLogicTests(TestCase):
         self.assertContains(resp_dashboard_admin, '<span>Django Admin</span>')
         self.assertEqual(self.client.get('/administracion/').status_code, 200)
 
+    def test_flujo_completo_crear_insumos_receta_producto_y_vender(self):
+        """
+        Verifica el flujo End-to-End solicitado por el usuario:
+        1. Agregar nuevos insumos (Queso, Pan, Jamón) sin exigir SKU ni categoría manual.
+        2. Crear nueva receta y producto ('Pan con queso y jamón') vinculando Queso, Pan y Jamón.
+        3. Vender ese producto (1 o más unidades) y descontar stock automáticamente en bodega.
+        """
+        self.client.force_login(self.user)
+        PerfilUsuario.objects.update_or_create(usuario=self.user, defaults={'rol': 'ADMIN'})
+
+        # 1. Crear insumos: Queso, Pan, Jamón
+        for nombre_ins, costo in [('Queso', '500'), ('Pan', '400'), ('Jamón', '600')]:
+            resp_ins = self.client.post(
+                '/bodega/bom/',
+                {
+                    'accion': 'guardar_insumo',
+                    'nombre': nombre_ins,
+                    'unidad_medida': 'UNIDAD',
+                    'stock_actual': '20,000',
+                    'stock_minimo': '2',
+                    'costo_unitario': costo,
+                },
+            )
+            self.assertEqual(resp_ins.status_code, 302)
+
+        ins_queso = Insumo.objects.get(nombre='Queso')
+        ins_pan = Insumo.objects.get(nombre='Pan')
+        ins_jamon = Insumo.objects.get(nombre='Jamón')
+        self.assertEqual(ins_queso.stock_actual, Decimal('20.000'))
+        self.assertTrue(ins_queso.codigo_sku.startswith('INS-QUE-'))
+
+        # 2. Crear receta y producto 'Pan con queso y jamón' con sus 3 insumos en un solo paso
+        resp_prod = self.client.post(
+            '/bodega/bom/',
+            {
+                'accion': 'guardar_producto',
+                'nombre': 'Pan con queso y jamón',
+                'precio_base': '2500',
+                'porciones_base': '1',
+                'receta_insumo_id': [str(ins_pan.pk), str(ins_queso.pk), str(ins_jamon.pk)],
+                'receta_cantidad': ['1', '2', '1'],
+                'receta_etapa': ['BATIDO_MASA', 'RELLENO', 'RELLENO'],
+                'receta_merma': ['0', '0', '0'],
+            },
+        )
+        self.assertEqual(resp_prod.status_code, 302)
+
+        prod_sandwich = ProductoPasteleria.objects.get(nombre='Pan con queso y jamón')
+        self.assertEqual(prod_sandwich.items_bom.count(), 3)
+
+        # 3. Vender 2 unidades de 'Pan con queso y jamón' mediante Venta Rápida
+        resp_venta = self.client.post(
+            '/bodega/bom/',
+            {
+                'accion': 'vender_producto_rapido',
+                'producto_id': prod_sandwich.pk,
+                'cantidad_venta': '2',
+            },
+        )
+        self.assertEqual(resp_venta.status_code, 302)
+
+        ins_pan.refresh_from_db()
+        ins_queso.refresh_from_db()
+        ins_jamon.refresh_from_db()
+
+        # Se vendieron 2 unidades -> descuenta 2 de Pan, 4 de Queso, 2 de Jamón
+        self.assertEqual(ins_pan.stock_actual, Decimal('18.000'))
+        self.assertEqual(ins_queso.stock_actual, Decimal('16.000'))
+        self.assertEqual(ins_jamon.stock_actual, Decimal('18.000'))
+
+
 

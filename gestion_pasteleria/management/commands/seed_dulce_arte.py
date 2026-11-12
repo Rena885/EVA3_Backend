@@ -129,6 +129,10 @@ class Command(BaseCommand):
             nombre='Packaging Isotérmico y Bases',
             defaults={'descripcion': 'Bases rígidas doradas y cajas térmicas para despacho', 'es_perecible': False, 'requiere_cadena_frio': False},
         )
+        CategoriaInsumo.objects.get_or_create(
+            nombre='Panadería, Salados e Insumos Generales',
+            defaults={'descripcion': 'Quesos, panes, fiambres, masas e insumos generales de cocina', 'es_perecible': True, 'requiere_cadena_frio': False},
+        )
 
         hoy = timezone.localdate()
         insumos_config = [

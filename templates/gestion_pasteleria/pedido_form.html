@@ -31,52 +31,69 @@
                 {% endif %}
 
                 <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
-                    <i class="bi bi-person-badge me-1"></i> 1. Cliente y Receta Base (BOM)
+                    <i class="bi bi-person-badge me-1"></i> 1. Producto / Receta (BOM) y Cliente
                 </h6>
                 <div class="row g-3 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label small fw-bold">Cliente *</label>
-                        {{ form.cliente }}
+                        <label class="form-label small fw-bold">Receta / Producto a Vender (Catálogo BOM) *</label>
+                        {{ form.producto_base }}
                         <div class="form-text">
-                            ¿Cliente nuevo? <a href="{% url 'clientes_list' %}" target="_blank">Registrar en Directorio</a>
+                            ¿Receta o producto nuevo? <a href="{% url 'inventario_bom' %}?tab=recetas">Crear en Bodega y Recetas</a>
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small fw-bold">Receta / Producto Base (Catálogo BOM) *</label>
-                        {{ form.producto_base }}
+                        <label class="form-label small fw-bold">Cliente Registrado</label>
+                        {{ form.cliente }}
+                        <div class="form-text">
+                            Si es venta directa en mesón, puedes dejar el cliente por defecto o escribir su nombre abajo.
+                        </div>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label small fw-bold">Porciones Solicitadas *</label>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">O Nombre de Cliente Rápido (Opcional)</label>
+                        {{ form.nuevo_cliente_nombre }}
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Cantidad / Porciones *</label>
                         {{ form.porciones_solicitadas }}
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label small fw-bold">Complejidad Artística *</label>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Complejidad</label>
                         {{ form.nivel_complejidad }}
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label small fw-bold">Maestro Pastelero Asignado</label>
+                    <div class="col-md-6">
+                        <label class="form-label small fw-bold">Maestro Pastelero Asignado (Opcional)</label>
                         {{ form.pastelero_asignado }}
                     </div>
+                    {% if not pedido %}
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="form-check p-2 ps-4 rounded border bg-success-subtle border-success-subtle w-100">
+                            <input class="form-check-input ms-0 me-2" type="checkbox" name="descontar_bom_inmediato" value="1" id="chkDescontarBom" checked>
+                            <label class="form-check-label small fw-bold text-success" for="chkDescontarBom">
+                                Descontar insumos de la receta (BOM) de bodega inmediatamente
+                            </label>
+                        </div>
+                    </div>
+                    {% endif %}
                 </div>
 
                 <h6 class="fw-bold text-danger border-bottom pb-2 mb-3">
-                    <i class="bi bi-palette2 me-1"></i> 2. Especificaciones de Personalización y Diseño
+                    <i class="bi bi-palette2 me-1"></i> 2. Especificaciones de Personalización (Opcional para productos estándar)
                 </h6>
                 <div class="row g-3 mb-3">
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold">Sabor de Bizcocho / Masa *</label>
+                        <label class="form-label small fw-bold">Base / Masa</label>
                         {{ form.sabor_bizcocho }}
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold">Relleno Principal *</label>
+                        <label class="form-label small fw-bold">Relleno / Ingredientes</label>
                         {{ form.relleno_principal }}
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold">Cobertura y Decoración *</label>
+                        <label class="form-label small fw-bold">Cobertura / Presentación</label>
                         {{ form.cobertura_diseno }}
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label small fw-bold">Dedicatoria en Placa de Chocolate</label>
+                        <label class="form-label small fw-bold">Dedicatoria (Opcional)</label>
                         {{ form.dedicatoria_texto }}
                     </div>
                     <div class="col-md-6">
@@ -84,7 +101,7 @@
                         {{ form.alergias_considerar }}
                     </div>
                     <div class="col-12">
-                        <label class="form-label small fw-bold">Descripción Detallada del Diseño Artístico *</label>
+                        <label class="form-label small fw-bold">Notas o Descripción del Pedido (Opcional)</label>
                         {{ form.descripcion_diseno }}
                     </div>
                     <div class="col-md-12">
@@ -109,7 +126,7 @@
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <input type="number" step="0.001" name="extra_cantidad" class="form-control form-control-sm" placeholder="Cant. (ej: 0.500)">
+                            <input type="number" step="any" name="extra_cantidad" class="form-control form-control-sm" placeholder="Cant. (ej: 0.500)">
                         </div>
                         <div class="col-md-4">
                             <input type="text" name="extra_motivo" class="form-control form-control-sm" placeholder="Ej: Frambuesas extra decoración">
@@ -123,11 +140,11 @@
                 </h6>
                 <div class="row g-3 mb-4">
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold">Fecha y Hora de Entrega *</label>
+                        <label class="form-label small fw-bold">Fecha y Hora de Entrega</label>
                         {{ form.fecha_entrega_comprometida }}
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold">Modalidad de Entrega *</label>
+                        <label class="form-label small fw-bold">Modalidad de Entrega</label>
                         {{ form.modalidad_entrega }}
                     </div>
                     <div class="col-md-4">
@@ -135,11 +152,11 @@
                         {{ form.prioridad }}
                     </div>
                     <div class="col-md-8">
-                        <label class="form-label small fw-bold">Dirección Exacta de Entrega *</label>
+                        <label class="form-label small fw-bold">Dirección de Entrega (Opcional si es Retiro en Tienda)</label>
                         {{ form.direccion_entrega }}
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label small fw-bold">Comuna *</label>
+                        <label class="form-label small fw-bold">Comuna</label>
                         {{ form.comuna_entrega }}
                     </div>
                     <div class="col-md-6">
@@ -155,7 +172,7 @@
                 <div class="d-flex justify-content-end gap-2">
                     <a href="{% url 'pedidos_list' %}" class="btn btn-outline-secondary">Cancelar</a>
                     <button type="submit" class="btn btn-dulce px-4">
-                        <i class="bi bi-check2-circle me-1"></i> Guardar Cotización y Pedido
+                        <i class="bi bi-check2-circle me-1"></i> Guardar Venta / Pedido
                     </button>
                 </div>
             </form>

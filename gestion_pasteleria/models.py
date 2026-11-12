@@ -178,6 +178,7 @@ class Insumo(models.Model):
     codigo_sku = models.CharField(
         max_length=30,
         unique=True,
+        blank=True,
         verbose_name='Código SKU'
     )
     nombre = models.CharField(max_length=120, verbose_name='Nombre del Insumo')
@@ -233,6 +234,7 @@ class Insumo(models.Model):
     )
     ubicacion_bodega = models.CharField(
         max_length=60,
+        blank=True,
         default='Estante Secos A1',
         verbose_name='Ubicación en Bodega / Cámara Frío'
     )
@@ -246,6 +248,39 @@ class Insumo(models.Model):
 
     def __str__(self):
         return f"[{self.codigo_sku}] {self.nombre} ({self.stock_actual} {self.unidad_medida})"
+
+    def save(self, *args, **kwargs):
+        if not self.codigo_sku or not self.codigo_sku.strip():
+            letras = ''.join(ch for ch in (self.nombre or '').upper() if ch.isalpha())
+            prefijo = (letras[:3] if len(letras) >= 3 else (letras + 'INS')[:3])
+            correlativo = Insumo.objects.count() + 1
+            candidato = f"INS-{prefijo}-{correlativo:03d}"
+            while Insumo.objects.filter(codigo_sku=candidato).exclude(pk=self.pk).exists():
+                correlativo += 1
+                candidato = f"INS-{prefijo}-{correlativo:03d}"
+            self.codigo_sku = candidato
+        else:
+            self.codigo_sku = self.codigo_sku.strip().upper()
+
+        if not self.categoria_id:
+            cat_default, _ = CategoriaInsumo.objects.get_or_create(
+                nombre='Panadería, Salados e Insumos Generales',
+                defaults={
+                    'descripcion': 'Quesos, panes, fiambres, masas e insumos generales de cocina',
+                    'es_perecible': True,
+                    'requiere_cadena_frio': False,
+                },
+            )
+            self.categoria = cat_default
+
+        if not self.proveedor or not self.proveedor.strip():
+            self.proveedor = 'Distribuidora Gourmet Chile'
+        if not self.lote_actual or not self.lote_actual.strip():
+            self.lote_actual = 'LOTE-2026-A1'
+        if not self.ubicacion_bodega or not self.ubicacion_bodega.strip():
+            self.ubicacion_bodega = 'Estante Secos A1'
+
+        super().save(*args, **kwargs)
 
     @property
     def en_alerta_stock(self) -> bool:
@@ -290,21 +325,32 @@ class ProductoPasteleria(models.Model):
         ('TORTA_CLASICA', 'Torta Tradicional Chilena & Europea'),
         ('NOVIOS_EVENTOS', 'Torta de Novios / Alta Pastelería Escultural'),
         ('SIN_ALERGENOS', 'Línea Keto / Vegana / Sin Gluten'),
+        ('PANADERIA_SANDWICH', 'Panadería, Sándwiches y Salados'),
+        ('PASTELERIA_INDIVIDUAL', 'Pastelería Individual y Cafetería'),
     ]
 
-    codigo = models.CharField(max_length=30, unique=True, verbose_name='Código Receta')
+    codigo = models.CharField(
+        max_length=30,
+        unique=True,
+        blank=True,
+        verbose_name='Código Receta'
+    )
     nombre = models.CharField(max_length=140, verbose_name='Nombre del Producto Base')
     categoria_producto = models.CharField(
         max_length=25,
         choices=CATEGORIA_PRODUCTO_CHOICES,
         default='TORTA_AUTOR',
-        verbose_name='Línea Pastelera'
+        verbose_name='Línea / Categoría de Producto'
     )
-    descripcion = models.TextField(verbose_name='Descripción Técnica y Gastronómica')
+    descripcion = models.TextField(
+        blank=True,
+        default='Elaboración artesanal según receta base y Lista de Materiales (BOM).',
+        verbose_name='Descripción Técnica y Gastronómica'
+    )
     porciones_base = models.PositiveIntegerField(
-        default=15,
+        default=1,
         validators=[MinValueValidator(1)],
-        verbose_name='Rendimiento Base (Porciones)'
+        verbose_name='Rendimiento Base (Unidades o Porciones)'
     )
     precio_base = models.DecimalField(
         max_digits=10,
@@ -315,7 +361,7 @@ class ProductoPasteleria(models.Model):
     tiempo_elaboracion_horas = models.DecimalField(
         max_digits=5,
         decimal_places=1,
-        default=Decimal('6.0'),
+        default=Decimal('1.0'),
         verbose_name='Tiempo Estimado en Cocina (Horas)'
     )
     requiere_refrigeracion = models.BooleanField(
@@ -335,6 +381,24 @@ class ProductoPasteleria(models.Model):
 
     def __str__(self):
         return f"{self.nombre} (Base {self.porciones_base} porc. - ${self.precio_base:,.0f})"
+
+    def save(self, *args, **kwargs):
+        if not self.codigo or not self.codigo.strip():
+            letras = ''.join(ch for ch in (self.nombre or '').upper() if ch.isalpha())
+            prefijo = (letras[:4] if len(letras) >= 4 else (letras + 'PROD')[:4])
+            correlativo = ProductoPasteleria.objects.count() + 1
+            candidato = f"REC-{prefijo}-{correlativo:03d}"
+            while ProductoPasteleria.objects.filter(codigo=candidato).exclude(pk=self.pk).exists():
+                correlativo += 1
+                candidato = f"REC-{prefijo}-{correlativo:03d}"
+            self.codigo = candidato
+        else:
+            self.codigo = self.codigo.strip().upper()
+
+        if not self.descripcion or not self.descripcion.strip():
+            self.descripcion = f"Receta y producto de catálogo: {self.nombre}."
+
+        super().save(*args, **kwargs)
 
     @property
     def costo_bom_base(self) -> Decimal:
@@ -524,22 +588,25 @@ class PedidoPersonalizado(models.Model):
 
     # Atributos de Personalización Pastelera (Funcionalidad 1)
     porciones_solicitadas = models.PositiveIntegerField(
-        default=20,
-        validators=[MinValueValidator(5)],
-        verbose_name='Cantidad de Porciones Solicitadas'
+        default=1,
+        validators=[MinValueValidator(1)],
+        verbose_name='Cantidad de Unidades / Porciones Solicitadas'
     )
     sabor_bizcocho = models.CharField(
         max_length=100,
+        blank=True,
         default='Bizcocho Vainilla Bourbon de Madagascar',
         verbose_name='Sabor de Bizcocho / Masa'
     )
     relleno_principal = models.CharField(
         max_length=120,
+        blank=True,
         default='Ganache de Chocolate Belga 70% y Frambuesas Frescas',
         verbose_name='Relleno Principal y Capas'
     )
     cobertura_diseno = models.CharField(
         max_length=120,
+        blank=True,
         default='Buttercream de Merengue Suizo con Flores Naturales',
         verbose_name='Cobertura y Estilo de Decoración'
     )
@@ -555,6 +622,8 @@ class PedidoPersonalizado(models.Model):
         verbose_name='Mensaje o Dedicatoria en Placa de Chocolate'
     )
     descripcion_diseno = models.TextField(
+        blank=True,
+        default='Preparación estándar según receta base y Lista de Materiales (BOM).',
         verbose_name='Especificaciones Detalladas del Diseño y Colores'
     )
     alergias_considerar = models.CharField(
@@ -572,6 +641,7 @@ class PedidoPersonalizado(models.Model):
     # Planificación Temporal y Logística
     fecha_creacion = models.DateTimeField(auto_now_add=True, verbose_name='Fecha de Cotización')
     fecha_entrega_comprometida = models.DateTimeField(
+        default=timezone.now,
         verbose_name='Fecha y Hora Comprometida de Entrega'
     )
     modalidad_entrega = models.CharField(
@@ -582,10 +652,13 @@ class PedidoPersonalizado(models.Model):
     )
     direccion_entrega = models.CharField(
         max_length=220,
+        blank=True,
+        default='Retiro en Tienda Dulce Arte',
         verbose_name='Dirección de Entrega'
     )
     comuna_entrega = models.CharField(
         max_length=80,
+        blank=True,
         default='Providencia',
         verbose_name='Comuna de Entrega'
     )
@@ -884,9 +957,24 @@ class PedidoPersonalizado(models.Model):
                     correlativo = PedidoPersonalizado.objects.count() + 1
             self.codigo_pedido = f"DA-{anio}-{correlativo:04d}"
 
-        if not self.direccion_entrega and self.cliente_id:
-            self.direccion_entrega = self.cliente.direccion_habitual
-            self.comuna_entrega = self.cliente.comuna
+        if (not self.direccion_entrega or not self.direccion_entrega.strip()) and self.cliente_id:
+            self.direccion_entrega = self.cliente.direccion_habitual or 'Retiro en Tienda Dulce Arte'
+            self.comuna_entrega = self.cliente.comuna or 'Providencia'
+        elif not self.direccion_entrega or not self.direccion_entrega.strip():
+            self.direccion_entrega = 'Retiro en Tienda Dulce Arte'
+
+        if not self.comuna_entrega or not self.comuna_entrega.strip():
+            self.comuna_entrega = self.cliente.comuna if self.cliente_id and self.cliente.comuna else 'Providencia'
+
+        if not self.sabor_bizcocho or not self.sabor_bizcocho.strip():
+            self.sabor_bizcocho = 'Según Receta Base'
+        if not self.relleno_principal or not self.relleno_principal.strip():
+            self.relleno_principal = 'Según Receta BOM'
+        if not self.cobertura_diseno or not self.cobertura_diseno.strip():
+            self.cobertura_diseno = 'Presentación Estándar'
+        if not self.descripcion_diseno or not self.descripcion_diseno.strip():
+            nombre_prod = self.producto_base.nombre if self.producto_base_id else 'Producto'
+            self.descripcion_diseno = f"Preparación estándar según receta de {nombre_prod}."
 
         # Calcular valores antes del primer guardado
         if self.producto_base_id:
